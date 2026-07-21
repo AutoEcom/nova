@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+:root {
+  --bg-void: #05060a;
+  --bg-deep: #0a0c14;
+  --bg-panel: rgba(12, 16, 28, 0.72);
+  --fg: #e8edf7;
+  --fg-muted: #8b95a8;
+  --neon-cyan: #00f0ff;
+  --neon-purple: #b347ff;
+  --neon-green: #39ff8a;
+  --neon-magenta: #ff2bd6;
+  --glass-border: rgba(0, 240, 255, 0.18);
+  --glow-cyan: 0 0 24px rgba(0, 240, 255, 0.35);
+  --glow-purple: 0 0 28px rgba(179, 71, 255, 0.4);
+  --glow-green: 0 0 24px rgba(57, 255, 138, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--bg-void);
+  --color-foreground: var(--fg);
+  --color-void: var(--bg-void);
+  --color-deep: var(--bg-deep);
+  --color-panel: var(--bg-panel);
+  --color-muted: var(--fg-muted);
+  --color-cyan: var(--neon-cyan);
+  --color-purple: var(--neon-purple);
+  --color-green: var(--neon-green);
+  --color-magenta: var(--neon-magenta);
+  --font-display: var(--font-orbitron);
+  --font-sans: var(--font-sora);
+  --font-mono: var(--font-jetbrains);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--fg);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(0, 240, 255, 0.28);
+  color: #fff;
+}
+
+/* Atmospheric grid + nebula */
+.cyber-bg {
+  background-color: var(--bg-void);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(179, 71, 255, 0.22), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 20%, rgba(0, 240, 255, 0.12), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 10% 60%, rgba(57, 255, 138, 0.08), transparent 50%),
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    48px 48px,
+    48px 48px;
+  background-attachment: fixed;
+}
+
+.glass {
+  background: var(--bg-panel);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-strong {
+  background: rgba(8, 12, 22, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
+}
+
+.text-glow-purple {
+  text-shadow: 0 0 18px rgba(179, 71, 255, 0.55);
+}
+
+.btn-glow-cyan {
+  box-shadow:
+    0 0 0 1px rgba(0, 240, 255, 0.45),
+    0 0 20px rgba(0, 240, 255, 0.35),
+    inset 0 0 12px rgba(0, 240, 255, 0.12);
+}
+
+.btn-glow-purple {
+  box-shadow:
+    0 0 0 1px rgba(179, 71, 255, 0.45),
+    0 0 20px rgba(179, 71, 255, 0.35),
+    inset 0 0 12px rgba(179, 71, 255, 0.12);
+}
+
+.progress-track {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.progress-fill-cyan {
+  background: linear-gradient(90deg, #00b8c4, var(--neon-cyan));
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.65);
+}
+
+.progress-fill-purple {
+  background: linear-gradient(90deg, #7a2ecc, var(--neon-purple));
+  box-shadow: 0 0 16px rgba(179, 71, 255, 0.65);
+}
+
+.progress-fill-green {
+  background: linear-gradient(90deg, #1fbf6a, var(--neon-green));
+  box-shadow: 0 0 16px rgba(57, 255, 138, 0.65);
+}
+
+/* Scanline overlay for hero atmosphere */
+.scanlines::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  opacity: 0.35;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.8s ease-in-out infinite;
+}
