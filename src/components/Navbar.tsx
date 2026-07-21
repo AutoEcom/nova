@@ -33,7 +33,7 @@ export function Navbar() {
           </a>
 
           {/* Desktop / tablet */}
-          <div className="hidden items-center gap-5 md:flex lg:gap-6">
+          <div className="nav-desktop items-center gap-5 lg:gap-6">
             {links.map((link) => (
               <a
                 key={link.href}
@@ -63,7 +63,7 @@ export function Navbar() {
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-foreground touch-manipulation md:hidden"
+            className="nav-mobile h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-foreground touch-manipulation"
           >
             <span className="sr-only">Menu</span>
             <div className="flex w-5 flex-col gap-1.5">

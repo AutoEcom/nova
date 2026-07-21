@@ -85,6 +85,29 @@ body {
   -webkit-backdrop-filter: blur(20px);
 }
 
+/*
+ * Navbar responsive display.
+ * These live OUTSIDE Tailwind's `@layer utilities`, so they always win the
+ * cascade over utility classes. In this Tailwind v4 build the base `hidden`
+ * utility outranks the `md:flex` variant, which would otherwise collapse the
+ * desktop navigation. Driving display from unlayered rules keeps the desktop
+ * nav permanently visible on md+ and the mobile trigger visible below it.
+ */
+.nav-desktop {
+  display: none;
+}
+.nav-mobile {
+  display: flex;
+}
+@media (min-width: 48rem) {
+  .nav-desktop {
+    display: flex;
+  }
+  .nav-mobile {
+    display: none;
+  }
+}
+
 .text-glow-cyan {
   text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
 }

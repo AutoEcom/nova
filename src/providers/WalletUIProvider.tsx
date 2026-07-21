@@ -10,9 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { UnlockPanelManager } from "@multiversx/sdk-dapp/out/managers/UnlockPanelManager";
-import { ProviderFactory } from "@multiversx/sdk-dapp/out/providers/ProviderFactory";
 import { ProviderTypeEnum } from "@multiversx/sdk-dapp/out/providers/types/providerFactory.types";
-import type { IProviderFactory } from "@multiversx/sdk-dapp/out/providers/types/providerFactory.types";
 import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { useMxReady } from "./MultiversXProvider";
 
@@ -48,25 +46,23 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
     if (!ready) return;
 
     const unlockPanelManager = UnlockPanelManager.init({
-      // Advanced handler: we own provider creation + login so a missing
-      // provider (e.g. extension not installed) fails gracefully instead of
-      // crashing the panel. `ProviderFactory.create` awaits the provider's
-      // async `init()` before we call `login()`.
-      loginHandler: async ({ type, anchor }: IProviderFactory) => {
-        try {
-          const provider = await ProviderFactory.create({ type, anchor });
-          if (!provider) {
-            throw new Error(`Unable to create provider "${type}"`);
-          }
-          await provider.login();
-
-          if (openBuyAfterLoginRef.current) {
-            setIsBuyOpen(true);
-            openBuyAfterLoginRef.current = false;
-          }
-        } catch (err) {
-          // Keep the unlock panel and all its options intact.
-          console.warn(`[NOVA] Login with "${type}" failed`, err);
+      // IMPORTANT: this MUST be a zero-argument callback.
+      //
+      // sdk-dapp inspects the handler's arity (`fn.length`). A zero-arg
+      // callback is treated as a "simple" handler: sdk-dapp performs
+      // `ProviderFactory.create()` + `await provider.login()` itself and keeps
+      // the unlock panel mounted — so QR flows (xPortal / WalletConnect) stay
+      // open until the user completes or cancels. It only runs this callback
+      // (and then closes) AFTER login resolves.
+      //
+      // A handler that declares args (e.g. `({ type, anchor }) => …`) is
+      // treated as "advanced": sdk-dapp calls it WITHOUT awaiting and closes
+      // the panel immediately, which tears the QR down the instant it appears.
+      // Provider errors (extension missing, user cancel) are caught internally
+      // by sdk-dapp and surfaced as a cancel, so options never disappear.
+      loginHandler: () => {
+        if (openBuyAfterLoginRef.current) {
+          setIsBuyOpen(true);
           openBuyAfterLoginRef.current = false;
         }
       },
