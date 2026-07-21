@@ -23,7 +23,12 @@ export function Navbar() {
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[55]">
       <div className="pointer-events-auto glass-strong mx-3 mt-3 rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.45)] sm:mx-4 md:mx-auto md:max-w-6xl">
         <nav className="flex items-center justify-between px-4 py-3 sm:px-5">
-          <a href="#hero" className="group flex items-center gap-2" onClick={closeMenu}>
+          <a
+            href="#hero"
+            className="group flex items-center gap-2"
+            onClick={closeMenu}
+            suppressHydrationWarning
+          >
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/15 font-display text-sm font-bold text-cyan btn-glow-cyan">
               N
             </span>
