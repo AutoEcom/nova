@@ -1,18 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useGetAccount } from "@multiversx/sdk-dapp/out/react/account/useGetAccount";
 import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { getAccount } from "@multiversx/sdk-dapp/out/methods/account/getAccount";
 import { refreshAccount } from "@multiversx/sdk-dapp/out/utils/account/refreshAccount";
 import {
+  EGLD_DECIMALS,
+  FALLBACK_EGLD_PRICE_USD,
   isTreasuryConfigured,
+  MIN_PURCHASE_USDC,
+  NOVA_PRICE_IN_USDC,
   NOVA_TOKEN_ID,
   TREASURY_ADDRESS,
+  USDC_PRESETS,
   USDC_TOKEN_ID,
 } from "@/config/network";
-import { createBuyNovaTransaction, type PaymentAsset } from "@/lib/mx/createBuyTransaction";
+import {
+  createBuyNovaTransaction,
+  type PaymentAsset,
+} from "@/lib/mx/createBuyTransaction";
+import {
+  fetchEgldPriceUsd,
+  meetsMinimum,
+  minAmountFor,
+  novaForUsdcValue,
+  usdcValueOf,
+} from "@/lib/mx/pricing";
 import { formatAddress, formatTokenAmount } from "@/lib/mx/format";
 import { fetchWalletTokenBalances } from "@/lib/mx/fetchBalances";
 import { signAndSendTransactions } from "@/lib/mx/signAndSendTransactions";
@@ -20,7 +35,18 @@ import { useWalletUI } from "@/providers/WalletUIProvider";
 import { useMxReady } from "@/providers/MultiversXProvider";
 import { GlowButton } from "@/components/ui/GlowButton";
 
-const QUICK_AMOUNTS = ["0.1", "0.5", "1", "5"];
+const novaFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const usdFmt = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+/** Trim a float to `digits` decimals without trailing zeros. */
+function trimNumber(value: number, digits = 6): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return value.toFixed(digits).replace(/\.?0+$/, "");
+}
 
 export function BuyNovaModal() {
   const { isBuyOpen, closeBuyModal, openConnect } = useWalletUI();
@@ -29,13 +55,59 @@ export function BuyNovaModal() {
   const isLoggedIn = useGetIsLoggedIn();
   const account = useGetAccount();
 
-  const [asset, setAsset] = useState<PaymentAsset>("EGLD");
-  const [amount, setAmount] = useState("1");
+  const [asset, setAsset] = useState<PaymentAsset>("USDC");
+  const [amount, setAmount] = useState(String(USDC_PRESETS[0]));
+  const [egldPrice, setEgldPrice] = useState<number | null>(null);
   const [usdcBalance, setUsdcBalance] = useState("0");
   const [status, setStatus] = useState<"idle" | "signing" | "success" | "error">(
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+
+  const price = egldPrice ?? FALLBACK_EGLD_PRICE_USD;
+
+  // ---- Derived pricing (real-time calculator) -----------------------------
+  const amountNum = Number(amount);
+  const usdcValue = useMemo(
+    () => usdcValueOf(amountNum, asset, price),
+    [amountNum, asset, price],
+  );
+  const novaOut = useMemo(() => novaForUsdcValue(usdcValue), [usdcValue]);
+  const minAmount = useMemo(() => minAmountFor(asset, price), [asset, price]);
+  const hasAmount = Number.isFinite(amountNum) && amountNum > 0;
+  const belowMinimum = hasAmount && !meetsMinimum(amountNum, asset, price);
+  const canSubmit = hasAmount && !belowMinimum && status !== "signing";
+
+  const presets = useMemo(() => {
+    if (asset === "USDC") {
+      return USDC_PRESETS.map((usd) => ({
+        value: String(usd),
+        label: String(usd),
+        usd,
+      }));
+    }
+    return USDC_PRESETS.map((usd) => {
+      const egld = price > 0 ? usd / price : 0;
+      return { value: trimNumber(egld, 6), label: trimNumber(egld, 4), usd };
+    });
+  }, [asset, price]);
+
+  // ---- Effects ------------------------------------------------------------
+  useEffect(() => {
+    if (!isBuyOpen) return;
+    setAsset("USDC");
+    setAmount(String(USDC_PRESETS[0]));
+    setStatus("idle");
+    setError(null);
+    let cancelled = false;
+    void (async () => {
+      const p = await fetchEgldPriceUsd();
+      if (!cancelled) setEgldPrice(p);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isBuyOpen]);
 
   useEffect(() => {
     if (!isBuyOpen || !account.address) return;
@@ -52,13 +124,6 @@ export function BuyNovaModal() {
   }, [isBuyOpen, account.address]);
 
   useEffect(() => {
-    if (!isBuyOpen) {
-      setStatus("idle");
-      setError(null);
-    }
-  }, [isBuyOpen]);
-
-  useEffect(() => {
     if (!isBuyOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeBuyModal();
@@ -67,11 +132,47 @@ export function BuyNovaModal() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isBuyOpen, closeBuyModal]);
 
+  // ---- Handlers -----------------------------------------------------------
+  /** Switch payment asset while preserving the equivalent purchase value. */
+  const changeAsset = useCallback(
+    (next: PaymentAsset) => {
+      if (next === asset) return;
+      const currentValue = usdcValueOf(
+        Number.isFinite(amountNum) ? amountNum : 0,
+        asset,
+        price,
+      );
+      if (currentValue > 0) {
+        const converted = next === "USDC" ? currentValue : currentValue / price;
+        setAmount(trimNumber(converted, next === "USDC" ? 2 : 6));
+      }
+      setAsset(next);
+    },
+    [asset, amountNum, price],
+  );
+
   const handleBuy = useCallback(async () => {
     setError(null);
 
     if (!isLoggedIn || !account.address) {
       openConnect();
+      return;
+    }
+
+    if (!hasAmount) {
+      setError("Enter an amount to continue");
+      setStatus("error");
+      return;
+    }
+
+    if (belowMinimum) {
+      setError(
+        `Minimum purchase is ${MIN_PURCHASE_USDC} USDC` +
+          (asset === "EGLD"
+            ? ` (≈ ${trimNumber(minAmount, 6)} EGLD)`
+            : ""),
+      );
+      setStatus("error");
       return;
     }
 
@@ -94,6 +195,7 @@ export function BuyNovaModal() {
         senderAddress: latest.address,
         amount,
         asset,
+        usdcValue,
         nonce: latest.nonce,
       });
 
@@ -114,7 +216,25 @@ export function BuyNovaModal() {
       setError(message);
       setStatus("error");
     }
-  }, [account.address, amount, asset, isLoggedIn, openConnect]);
+  }, [
+    account.address,
+    amount,
+    asset,
+    belowMinimum,
+    hasAmount,
+    isLoggedIn,
+    minAmount,
+    openConnect,
+    usdcValue,
+  ]);
+
+  const payLabel = !isLoggedIn
+    ? "Connect to Buy"
+    : status === "signing"
+      ? "Confirm in Wallet…"
+      : belowMinimum
+        ? `Minimum ${MIN_PURCHASE_USDC} USDC`
+        : `Buy ≈ ${novaFmt.format(novaOut)} NOVA`;
 
   return (
     <AnimatePresence>
@@ -164,21 +284,24 @@ export function BuyNovaModal() {
             </div>
 
             <p className="mb-4 text-sm leading-relaxed text-muted">
-              Pay with EGLD or USDC. Funds transfer to the NOVA treasury for{" "}
-              <span className="font-mono text-cyan">{NOVA_TOKEN_ID}</span>.
+              Fixed rate:{" "}
+              <span className="font-mono text-cyan">
+                1 NOVA = {NOVA_PRICE_IN_USDC} USDC
+              </span>
+              . Pay with EGLD or USDC — funds route to the NOVA treasury.
             </p>
 
             <div className="mb-4 grid grid-cols-2 gap-2">
-              {(["EGLD", "USDC"] as PaymentAsset[]).map((option) => (
+              {(["USDC", "EGLD"] as PaymentAsset[]).map((option) => (
                 <button
                   key={option}
                   type="button"
-                  onClick={() => setAsset(option)}
+                  onClick={() => changeAsset(option)}
                   className={`rounded-xl border px-3 py-3 font-display text-sm font-semibold tracking-wide transition-all touch-manipulation ${
                     asset === option
                       ? option === "EGLD"
-                        ? "border-cyan/50 bg-cyan/15 text-cyan btn-glow-cyan"
-                        : "border-purple/50 bg-purple/15 text-purple btn-glow-purple"
+                        ? "border-purple/50 bg-purple/15 text-purple btn-glow-purple"
+                        : "border-cyan/50 bg-cyan/15 text-cyan btn-glow-cyan"
                       : "border-white/10 bg-white/5 text-muted hover:border-white/20"
                   }`}
                 >
@@ -198,25 +321,61 @@ export function BuyNovaModal() {
                 step="any"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-xl border border-cyan/20 bg-void/60 px-4 py-3 font-mono text-base text-foreground outline-none ring-cyan/30 placeholder:text-muted focus:border-cyan/50 focus:ring-2"
+                className={`w-full rounded-xl border bg-void/60 px-4 py-3 font-mono text-base text-foreground outline-none ring-cyan/30 placeholder:text-muted focus:ring-2 ${
+                  belowMinimum
+                    ? "border-magenta/50 focus:border-magenta/60"
+                    : "border-cyan/20 focus:border-cyan/50"
+                }`}
                 placeholder="0.00"
               />
             </div>
 
             <div className="mb-4 flex flex-wrap gap-2">
-              {QUICK_AMOUNTS.map((q) => (
+              {presets.map((preset) => (
                 <button
-                  key={q}
+                  key={preset.usd}
                   type="button"
-                  onClick={() => setAmount(q)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-[11px] text-muted hover:border-cyan/30 hover:text-cyan touch-manipulation"
+                  onClick={() => setAmount(preset.value)}
+                  className="flex flex-col items-start rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-left font-mono text-[11px] text-muted hover:border-cyan/30 hover:text-cyan touch-manipulation"
                 >
-                  {q} {asset}
+                  <span className="text-foreground">
+                    {preset.label} {asset}
+                  </span>
+                  {asset === "EGLD" && (
+                    <span className="text-[9px] text-muted">
+                      ≈ ${preset.usd}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
 
-            <div className="mb-5 space-y-1.5 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3 font-mono text-[11px] text-muted">
+            {/* Real-time calculator */}
+            <div className="mb-4 rounded-2xl border border-cyan/20 bg-cyan/[0.04] p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                  You receive
+                </span>
+                <span className="font-mono text-[10px] text-muted">
+                  ≈ {usdFmt.format(usdcValue)}
+                </span>
+              </div>
+              <p className="mt-1 font-display text-2xl font-bold tracking-wide text-glow-cyan">
+                {novaFmt.format(novaOut)}{" "}
+                <span className="text-base text-cyan">$NOVA</span>
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-muted">
+                <span>1 NOVA = {NOVA_PRICE_IN_USDC} USDC</span>
+                {asset === "EGLD" && (
+                  <span className="text-purple">
+                    EGLD ≈ {usdFmt.format(price)}
+                    {egldPrice === null ? " (est.)" : ""}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-4 space-y-1.5 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3 font-mono text-[11px] text-muted">
               <p>
                 Wallet:{" "}
                 <span className="text-foreground">
@@ -229,7 +388,7 @@ export function BuyNovaModal() {
                 Available:{" "}
                 <span className="text-cyan">
                   {asset === "EGLD"
-                    ? `${formatTokenAmount(account.balance || "0", 18, 4)} EGLD`
+                    ? `${formatTokenAmount(account.balance || "0", EGLD_DECIMALS, 4)} EGLD`
                     : `${usdcBalance} USDC`}
                 </span>
               </p>
@@ -240,12 +399,19 @@ export function BuyNovaModal() {
               <p>
                 Pay with:{" "}
                 <span className="text-foreground">
-                  {asset === "USDC" ? USDC_TOKEN_ID : "EGLD"}
+                  {asset === "USDC" ? USDC_TOKEN_ID : "EGLD (native)"}
                 </span>
               </p>
             </div>
 
-            {error && (
+            {belowMinimum && (
+              <p className="mb-3 rounded-xl border border-magenta/30 bg-magenta/10 px-3 py-2 font-mono text-[11px] text-magenta">
+                Minimum purchase is {MIN_PURCHASE_USDC} USDC
+                {asset === "EGLD" ? ` (≈ ${trimNumber(minAmount, 6)} EGLD)` : ""}.
+              </p>
+            )}
+
+            {error && !belowMinimum && (
               <p className="mb-3 rounded-xl border border-magenta/30 bg-magenta/10 px-3 py-2 font-mono text-[11px] text-magenta">
                 {error}
               </p>
@@ -261,13 +427,11 @@ export function BuyNovaModal() {
               variant="cyan"
               fullWidth
               onClick={handleBuy}
-              className={status === "signing" ? "opacity-70 pointer-events-none" : ""}
+              className={
+                isLoggedIn && !canSubmit ? "opacity-60 pointer-events-none" : ""
+              }
             >
-              {!isLoggedIn
-                ? "Connect to Buy"
-                : status === "signing"
-                  ? "Confirm in Wallet…"
-                  : `Pay ${amount || "0"} ${asset}`}
+              {payLabel}
             </GlowButton>
           </motion.div>
         </motion.div>

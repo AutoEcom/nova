@@ -11,7 +11,6 @@ import {
 } from "react";
 import { UnlockPanelManager } from "@multiversx/sdk-dapp/out/managers/UnlockPanelManager";
 import { ProviderTypeEnum } from "@multiversx/sdk-dapp/out/providers/types/providerFactory.types";
-import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { useMxReady } from "./MultiversXProvider";
 
 type WalletUIContextValue = {
@@ -40,7 +39,6 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const openBuyAfterLoginRef = useRef(false);
   const { ready } = useMxReady();
-  const isLoggedIn = useGetIsLoggedIn();
 
   const openUnlockPanel = useCallback(() => {
     if (!ready) return;
@@ -80,13 +78,11 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
   }, [openUnlockPanel]);
 
   const openBuyModal = useCallback(() => {
-    if (!isLoggedIn) {
-      openBuyAfterLoginRef.current = true;
-      openUnlockPanel();
-      return;
-    }
+    // Open the calculator immediately (even when not connected). The modal's
+    // pay action handles connecting the wallet when the user commits, so
+    // pricing is always visible up-front.
     setIsBuyOpen(true);
-  }, [isLoggedIn, openUnlockPanel]);
+  }, []);
 
   const closeBuyModal = useCallback(() => setIsBuyOpen(false), []);
 
