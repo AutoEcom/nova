@@ -108,6 +108,28 @@ body {
   }
 }
 
+/*
+ * Dashboard chrome responsive display.
+ * Same rationale as the navbar helpers above: the base `hidden` utility can
+ * outrank the `md:flex` variant in this Tailwind v4 build, so the persistent
+ * desktop sidebar is driven from unlayered rules to guarantee it shows on md+.
+ * The mobile section nav mirrors it in reverse.
+ */
+.dash-sidebar {
+  display: none;
+}
+.dash-mobilenav {
+  display: flex;
+}
+@media (min-width: 48rem) {
+  .dash-sidebar {
+    display: flex;
+  }
+  .dash-mobilenav {
+    display: none;
+  }
+}
+
 .text-glow-cyan {
   text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
 }

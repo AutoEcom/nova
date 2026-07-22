@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlowButton } from "./ui/GlowButton";
 import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
+import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 const links = [
-  { href: "#tokenomics", label: "Tokenomics" },
-  { href: "#roadmap", label: "Roadmap" },
-  { href: "#ecosystem", label: "Ecosystem" },
-  { href: "#community", label: "Community" },
+  { href: "/#tokenomics", label: "Tokenomics" },
+  { href: "/#roadmap", label: "Roadmap" },
+  { href: "/#ecosystem", label: "Ecosystem" },
+  { href: "/#community", label: "Community" },
 ];
 
 export function Navbar() {
@@ -23,8 +25,8 @@ export function Navbar() {
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[55]">
       <div className="pointer-events-auto glass-strong mx-3 mt-3 rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.45)] sm:mx-4 md:mx-auto md:max-w-6xl">
         <nav className="flex items-center justify-between px-4 py-3 sm:px-5">
-          <a
-            href="#hero"
+          <Link
+            href="/#hero"
             className="group flex items-center gap-2"
             onClick={closeMenu}
             suppressHydrationWarning
@@ -35,19 +37,20 @@ export function Navbar() {
             <span className="font-display text-base font-bold tracking-[0.2em] text-foreground transition-colors group-hover:text-cyan">
               NOVA
             </span>
-          </a>
+          </Link>
 
           {/* Desktop / tablet */}
           <div className="nav-desktop items-center gap-5 lg:gap-6">
             {links.map((link) => (
-              <a
+              <Link
                 key={link.href}
                 href={link.href}
                 className="font-mono text-xs uppercase tracking-wider text-muted transition-colors hover:text-cyan"
               >
                 {link.label}
-              </a>
+              </Link>
             ))}
+            <DashboardEntry compact />
             <GlowButton
               variant="cyan"
               className="!px-4 !py-2.5 !text-xs"
@@ -96,16 +99,17 @@ export function Navbar() {
             >
               <div className="flex flex-col gap-1 px-4 py-4">
                 {links.map((link) => (
-                  <a
+                  <Link
                     key={link.href}
                     href={link.href}
                     onClick={closeMenu}
                     className="rounded-xl px-3 py-3 font-mono text-sm uppercase tracking-wider text-muted transition-colors hover:bg-white/5 hover:text-cyan"
                   >
                     {link.label}
-                  </a>
+                  </Link>
                 ))}
                 <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                  <DashboardEntry onNavigate={closeMenu} />
                   <GlowButton
                     variant="cyan"
                     fullWidth

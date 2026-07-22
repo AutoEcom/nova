@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { GlowButton } from "./ui/GlowButton";
 import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
+import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 import { NOVA_TOKEN_ID } from "@/config/network";
 
@@ -79,6 +80,7 @@ export function Hero() {
             variant="ghost"
             className="sm:min-w-[160px]"
           />
+          <DashboardEntry compact className="sm:min-w-[140px] justify-center !py-3.5 !text-xs" />
         </motion.div>
 
         <motion.div

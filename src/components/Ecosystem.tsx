@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { GlassCard } from "./ui/GlassCard";
 import { ProgressBar } from "./ui/ProgressBar";
 import { SectionHeading } from "./ui/SectionHeading";
@@ -7,6 +8,8 @@ import { SectionHeading } from "./ui/SectionHeading";
 const modules = [
   {
     title: "AI Trading Dashboard",
+    href: "/dashboard",
+    cta: "Open Console",
     blurb:
       "Real-time signal streams, risk overlays, and one-tap MultiversX execution — built for elite algorithmic operators.",
     features: [
@@ -24,6 +27,8 @@ const modules = [
   },
   {
     title: "Staking Pools",
+    href: "/dashboard/staking",
+    cta: "Preview Staking",
     blurb:
       "Lock $NOVA to secure yield from protocol performance. Tiered pools reward longer commitments and deeper liquidity.",
     features: [
@@ -83,13 +88,23 @@ export function Ecosystem() {
                 ))}
               </ul>
 
-              <div className="mt-auto pt-6">
+              <div className="mt-auto space-y-4 pt-6">
                 <ProgressBar
                   label={mod.progress.label}
                   status={mod.progress.status}
                   progress={mod.progress.value}
                   tone={mod.progress.tone}
                 />
+                <Link
+                  href={mod.href}
+                  className={`inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors touch-manipulation ${
+                    mod.progress.tone === "cyan"
+                      ? "border-cyan/30 bg-cyan/10 text-cyan hover:bg-cyan/20"
+                      : "border-purple/30 bg-purple/10 text-purple hover:bg-purple/20"
+                  }`}
+                >
+                  {mod.cta}
+                </Link>
               </div>
             </GlassCard>
           ))}
