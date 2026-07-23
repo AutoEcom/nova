@@ -5,7 +5,6 @@ import { GlowButton } from "./ui/GlowButton";
 import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
 import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
-import { NOVA_TOKEN_ID } from "@/config/network";
 
 export function Hero() {
   const { openBuyModal } = useWalletUI();
@@ -30,7 +29,7 @@ export function Hero() {
           transition={{ duration: 0.5 }}
           className="mb-4 font-mono text-[11px] uppercase tracking-[0.35em] text-cyan sm:text-xs"
         >
-          EVOLGO · Powered by $NOVA · {NOVA_TOKEN_ID}
+          MultiversX • Supernova • Quantum Trade
         </motion.p>
 
         <motion.h1
@@ -39,7 +38,7 @@ export function Hero() {
           transition={{ duration: 0.65, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="font-display text-[clamp(2.75rem,12vw,6.5rem)] font-extrabold leading-[0.92] tracking-tight text-glow-cyan"
         >
-          NOVA
+          EVOLGO
         </motion.h1>
 
         <motion.p
@@ -48,21 +47,23 @@ export function Hero() {
           transition={{ duration: 0.55, delay: 0.18 }}
           className="mt-4 max-w-xl font-display text-lg font-semibold leading-snug tracking-wide text-foreground sm:text-2xl md:text-3xl"
         >
-          The AI that evolves with the market —{" "}
-          <span className="text-purple text-glow-purple">powered by $NOVA</span>
+          Powered by{" "}
+          <span className="text-purple text-glow-purple">$NOVA</span>.
         </motion.p>
 
-        <motion.p
+        <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.28 }}
-          className="mt-4 max-w-md text-sm leading-relaxed text-muted sm:text-base"
+          className="mt-4 max-w-md space-y-3 text-sm leading-relaxed text-muted sm:text-base"
         >
-          Evolgo is an autonomous AI trading intelligence engine that learns from
-          historical data, continuously evolves its strategies, and adapts to
-          changing market conditions. Access, computation, strategy evolution, and
-          autonomous execution are powered by $NOVA.
-        </motion.p>
+          <p>
+            Evolgo is an autonomous AI trading intelligence layer built to learns
+            from historical data, evolves its strategies, and adapts to market
+            conditions.
+          </p>
+          <p className="italic">Access and execution are powered by $NOVA.</p>
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 16 }}
