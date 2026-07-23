@@ -30,7 +30,7 @@ export function Hero() {
           transition={{ duration: 0.5 }}
           className="mb-4 font-mono text-[11px] uppercase tracking-[0.35em] text-cyan sm:text-xs"
         >
-          MultiversX · {NOVA_TOKEN_ID}
+          EVOLGO · Powered by $NOVA · {NOVA_TOKEN_ID}
         </motion.p>
 
         <motion.h1
@@ -48,8 +48,8 @@ export function Hero() {
           transition={{ duration: 0.55, delay: 0.18 }}
           className="mt-4 max-w-xl font-display text-lg font-semibold leading-snug tracking-wide text-foreground sm:text-2xl md:text-3xl"
         >
-          AI Trading meets{" "}
-          <span className="text-purple text-glow-purple">MultiversX Supernova</span>
+          The AI that evolves with the market —{" "}
+          <span className="text-purple text-glow-purple">powered by $NOVA</span>
         </motion.p>
 
         <motion.p
@@ -58,8 +58,10 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 0.28 }}
           className="mt-4 max-w-md text-sm leading-relaxed text-muted sm:text-base"
         >
-          Elite algorithmic execution powered by the $NOVA utility token —
-          precision signals, buyback pressure, and on-chain scarcity.
+          Evolgo is an autonomous AI trading intelligence engine that learns from
+          historical data, continuously evolves its strategies, and adapts to
+          changing market conditions. Access, computation, strategy evolution, and
+          autonomous execution are powered by $NOVA.
         </motion.p>
 
         <motion.div

@@ -11,7 +11,7 @@ const BOT_SLOTS = [
     id: "local",
     title: "Local Agent",
     blurb:
-      "Run NOVA bots on your own hardware with non-custodial signing. Ideal for operators who want full key control.",
+      "Run EVOLGO bots on your own hardware with non-custodial signing. Ideal for operators who want full key control.",
     status: "in-progress" as const,
     progress: 54,
     features: ["Hardware key signing", "Offline strategy packs", "Local risk caps"],

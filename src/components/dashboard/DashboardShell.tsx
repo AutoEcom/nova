@@ -31,15 +31,15 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 suppressHydrationWarning
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/15 font-display text-sm font-bold text-cyan btn-glow-cyan">
-                  N
+                  E
                 </span>
                 <span className="font-display text-base font-bold tracking-[0.2em] text-foreground transition-colors group-hover:text-cyan">
-                  NOVA
+                  EVOLGO
                 </span>
               </Link>
               <span className="hidden h-5 w-px bg-white/10 sm:block" aria-hidden />
               <span className="hidden font-mono text-[10px] uppercase tracking-[0.22em] text-muted sm:inline">
-                Operator Console
+                Powered by $NOVA
               </span>
             </div>
 
@@ -76,7 +76,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
             <DashboardNav orientation="vertical" />
             <div className="mt-4 border-t border-white/8 px-2 pt-4">
               <p className="font-mono text-[10px] uppercase tracking-wider text-muted">
-                Token
+                EVOLGO · Powered by $NOVA
               </p>
               <p className="mt-1 font-display text-sm font-semibold tracking-wide text-cyan">
                 NOVA-04c5f5

@@ -22,17 +22,32 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NOVA | AI Algorithmic Trading on MultiversX",
+  title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
   description:
-    "Elite AI algorithmic trading powered by the $NOVA utility token on MultiversX. Buyback & burn. Supernova-grade performance.",
+    "EVOLGO is an autonomous AI trading intelligence engine powered by $NOVA on MultiversX. Strategies that evolve with the market.",
   keywords: [
+    "EVOLGO",
     "NOVA",
+    "$NOVA",
     "MultiversX",
     "AI trading",
+    "autonomous trading",
     "algorithmic trading",
     "Web3",
-    "crypto",
   ],
+  openGraph: {
+    title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
+    description:
+      "EVOLGO is an autonomous AI trading intelligence engine that learns, evolves, and adapts — powered by $NOVA on MultiversX.",
+    type: "website",
+    siteName: "EVOLGO",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
+    description:
+      "EVOLGO is an autonomous AI trading intelligence engine that learns, evolves, and adapts — powered by $NOVA on MultiversX.",
+  },
 };
 
 export const viewport: Viewport = {

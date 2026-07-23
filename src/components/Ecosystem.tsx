@@ -53,7 +53,7 @@ export function Ecosystem() {
         <SectionHeading
           eyebrow="Ecosystem"
           title="Platform Preview"
-          description="The NOVA stack is coming online — AI trading intelligence and staking pools engineered for MultiversX."
+          description="EVOLGO — Powered by $NOVA. The stack is coming online — AI trading intelligence and staking pools engineered for MultiversX."
         />
 
         <div className="grid gap-4 md:grid-cols-2 md:gap-6">

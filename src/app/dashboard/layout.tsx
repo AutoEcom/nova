@@ -4,9 +4,9 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ClientErrorBoundary } from "@/components/ClientErrorBoundary";
 
 export const metadata: Metadata = {
-  title: "Dashboard | NOVA Operator Console",
+  title: "Dashboard | EVOLGO — Powered by $NOVA",
   description:
-    "NOVA operator console — portfolio overview, AI trading performance, bots, staking, and referrals on MultiversX.",
+    "EVOLGO operator console — portfolio overview, AI trading performance, bots, staking, and referrals powered by $NOVA on MultiversX.",
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

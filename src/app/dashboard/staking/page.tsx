@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ComingSoonPanel } from "@/components/dashboard/ComingSoonPanel";
 
 export const metadata: Metadata = {
-  title: "Staking | NOVA Dashboard",
+  title: "Staking | EVOLGO Dashboard",
   description:
-    "Stake $NOVA into protocol pools and earn buyback-boosted rewards. Coming soon on MultiversX.",
+    "Stake $NOVA into EVOLGO protocol pools and earn buyback-boosted rewards. Coming soon on MultiversX.",
 };
 
 export default function DashboardStakingPage() {

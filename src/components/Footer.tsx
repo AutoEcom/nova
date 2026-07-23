@@ -47,7 +47,10 @@ export function Footer() {
           className="flex flex-col items-center text-center"
         >
           <p className="font-display text-2xl font-bold tracking-[0.25em] text-glow-cyan">
-            NOVA
+            EVOLGO
+          </p>
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.22em] text-cyan">
+            Powered by $NOVA
           </p>
           <p className="mt-3 max-w-md text-sm text-muted">
             Join the operators shaping AI-native trading on MultiversX.
@@ -74,7 +77,7 @@ export function Footer() {
 
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-center sm:flex-row sm:text-left">
           <p className="font-mono text-[11px] text-muted">
-            © {new Date().getFullYear()} NOVA. Built on MultiversX.
+            © {new Date().getFullYear()} EVOLGO. Powered by $NOVA · MultiversX.
           </p>
           <p className="font-mono text-[11px] text-muted">
             Utility token · Not financial advice

@@ -73,7 +73,7 @@ export function AiPerformance() {
             Backtest intelligence
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-muted">
-            Aggregated metrics from the NOVA strategy suite currently validating
+            Aggregated metrics from the EVOLGO strategy suite currently validating
             on MultiversX market data. Live telemetry unlocks with the AI
             Trading Dashboard.
           </p>

@@ -32,10 +32,10 @@ export function Navbar() {
             suppressHydrationWarning
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan/15 font-display text-sm font-bold text-cyan btn-glow-cyan">
-              N
+              E
             </span>
             <span className="font-display text-base font-bold tracking-[0.2em] text-foreground transition-colors group-hover:text-cyan">
-              NOVA
+              EVOLGO
             </span>
           </Link>
 

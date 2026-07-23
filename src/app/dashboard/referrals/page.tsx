@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ComingSoonPanel } from "@/components/dashboard/ComingSoonPanel";
 
 export const metadata: Metadata = {
-  title: "Referrals | NOVA Dashboard",
+  title: "Referrals | EVOLGO Dashboard",
   description:
-    "Invite operators into NOVA and earn referral rewards. Program launching soon on MultiversX.",
+    "Invite operators into EVOLGO and earn referral rewards powered by $NOVA. Program launching soon on MultiversX.",
 };
 
 export default function DashboardReferralsPage() {

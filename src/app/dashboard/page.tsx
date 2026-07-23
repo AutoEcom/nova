@@ -12,8 +12,8 @@ export default function DashboardOverviewPage() {
           Operator dashboard
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-          Live $NOVA holdings paired with AI backtest intelligence — the command
-          surface for MultiversX operators.
+          Live $NOVA holdings paired with EVOLGO AI backtest intelligence — the
+          command surface for MultiversX operators.
         </p>
       </header>
 
