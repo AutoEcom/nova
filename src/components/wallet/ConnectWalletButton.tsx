@@ -90,22 +90,27 @@ function ConnectWalletButtonReady({
   if (isLoggedIn && compact) {
     return (
       <div
-        className={`inline-flex items-center gap-2 rounded-xl border border-cyan/25 bg-cyan/10 px-2.5 py-1.5 ${fullWidth ? "w-full justify-between" : ""} ${className}`}
+        className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-cyan/25 bg-cyan/10 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5 ${fullWidth ? "w-full justify-between" : ""} ${className}`}
       >
         <a
           href={`${EXPLORER_URL}/accounts/${account.address}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-mono text-[11px] tracking-wide text-cyan touch-manipulation"
+          className="max-w-[7.5rem] truncate font-mono text-[10px] tracking-wide text-cyan touch-manipulation md:max-w-none md:text-[11px]"
+          title={account.address}
         >
           {formatAddress(account.address, 4)}
         </a>
         <button
           type="button"
           onClick={handleLogout}
-          className="rounded-lg px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted transition-colors hover:text-magenta touch-manipulation"
+          aria-label="Disconnect wallet"
+          className="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted transition-colors hover:text-magenta touch-manipulation md:rounded-lg md:px-2 md:py-1"
         >
-          Exit
+          <span className="md:hidden" aria-hidden>
+            ×
+          </span>
+          <span className="max-md:hidden">Exit</span>
         </button>
       </div>
     );

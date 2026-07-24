@@ -27,7 +27,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-4 font-mono text-[11px] uppercase tracking-[0.35em] text-cyan sm:text-xs"
+          className="mb-4 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-cyan sm:text-[11px] sm:tracking-[0.28em] md:text-xs md:tracking-[0.35em]"
         >
           MultiversX • Supernova • Quantum Trade
         </motion.p>
@@ -90,17 +90,21 @@ export function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.55, duration: 0.6 }}
-          className="mt-10 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-muted"
+          className="mt-10 flex flex-nowrap items-center gap-x-1.5 overflow-x-auto whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-muted [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-x-4 sm:text-[11px] sm:tracking-wider md:gap-x-6 [&::-webkit-scrollbar]:hidden"
         >
-          <span>
+          <span className="shrink-0">
             Supply <span className="text-green">450M</span>
           </span>
-          <span className="text-white/20">|</span>
-          <span>
+          <span className="shrink-0 text-white/20" aria-hidden>
+            |
+          </span>
+          <span className="shrink-0">
             Chain <span className="text-cyan">MultiversX</span>
           </span>
-          <span className="text-white/20">|</span>
-          <span>
+          <span className="shrink-0 text-white/20" aria-hidden>
+            |
+          </span>
+          <span className="shrink-0">
             Mechanism <span className="text-purple">Buyback & Burn</span>
           </span>
         </motion.div>

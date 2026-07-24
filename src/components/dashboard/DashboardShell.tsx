@@ -43,16 +43,17 @@ export function DashboardShell({ children }: DashboardShellProps) {
               </span>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
               <Link
                 href="/#tokenomics"
                 className="hidden font-mono text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-cyan md:inline"
               >
                 Landing
               </Link>
+              {/* Hidden below md so the wallet chip has room; desktop unchanged */}
               <GlowButton
                 variant="cyan"
-                className="!px-3 !py-2 !text-[11px] sm:!px-4 sm:!py-2.5 sm:!text-xs"
+                className="max-md:!hidden !px-3 !py-2 !text-[11px] sm:!px-4 sm:!py-2.5 sm:!text-xs"
                 onClick={openBuyModal}
               >
                 Buy $NOVA
@@ -60,7 +61,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
               <ConnectWalletButton
                 variant="ghost"
                 compact
-                className="!px-3 !py-2 !text-[11px] sm:!px-4 sm:!py-2.5 sm:!text-xs"
+                className="!px-2 !py-1 !text-[10px] sm:!px-4 sm:!py-2.5 sm:!text-xs"
               />
             </div>
           </div>
