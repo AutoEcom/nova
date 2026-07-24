@@ -5,42 +5,34 @@ import { SectionHeading } from "./ui/SectionHeading";
 
 const phases = [
   {
-    quarter: "Q1",
-    title: "Genesis Launch",
+    quarter: "Phase 1",
+    title: "Genesis & Token Launch",
     items: [
-      "$NOVA token deployment on MultiversX",
-      "Liquidity bootstrap & community ignition",
-      "Core brand & landing live",
+      "Finalization of the core brand identity and deployment of the $NOVA token contract on MultiversX Mainnet.",
     ],
     status: "done" as const,
   },
   {
-    quarter: "Q2",
-    title: "Intelligence Core",
+    quarter: "Phase 2",
+    title: "Intelligence Core & Platform UI",
     items: [
-      "AI signal engine alpha",
-      "Buyback & Burn automation",
-      "Staking pool architecture",
+      "Launch of the evolgo.app command surface, integrated wallet connectivity, and initial backtest telemetry data engine.",
     ],
     status: "active" as const,
   },
   {
-    quarter: "Q3",
-    title: "Trading Dashboard",
+    quarter: "Phase 3",
+    title: "Local Agent & Strategy Deployment",
     items: [
-      "Public AI Trading Dashboard beta",
-      "Wallet-native MultiversX connect",
-      "Performance analytics suite",
+      "Release of local hardware execution architecture, offline strategy packs, and custom risk-capping modules for independent operators.",
     ],
     status: "next" as const,
   },
   {
-    quarter: "Q4",
-    title: "Supernova Expansion",
+    quarter: "Phase 4",
+    title: "Cloud Fleet & Mainnet Beta",
     items: [
-      "Full staking pools live",
-      "Cross-strategy AI modules",
-      "Governance & ecosystem grants",
+      "Rollout of managed cloud execution workers, shared signal bus infrastructure, and advanced staking-gated automation features.",
     ],
     status: "next" as const,
   },
@@ -70,8 +62,8 @@ export function Roadmap() {
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Roadmap"
-          title="Path to Supernova"
-          description="A clear, step-by-step timeline from genesis through full AI trading infrastructure on MultiversX."
+          title="Evolution Roadmap"
+          description="A clear evolution path from genesis through cloud fleet automation — EVOLGO powered by $NOVA on MultiversX."
         />
 
         <div className="relative">

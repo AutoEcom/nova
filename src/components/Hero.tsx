@@ -47,8 +47,7 @@ export function Hero() {
           transition={{ duration: 0.55, delay: 0.18 }}
           className="mt-4 max-w-xl font-display text-lg font-semibold leading-snug tracking-wide text-foreground sm:text-2xl md:text-3xl"
         >
-          Powered by{" "}
-          <span className="text-purple text-glow-purple">$NOVA</span>.
+          The AI that evolves with the market.
         </motion.p>
 
         <motion.div
@@ -58,7 +57,7 @@ export function Hero() {
           className="mt-4 max-w-md space-y-3 text-sm leading-relaxed text-muted sm:text-base"
         >
           <p>
-            Evolgo is an autonomous AI trading intelligence layer built to learns
+            Evolgo is an autonomous AI trading intelligence layer built to learn
             from historical data, evolves its strategies, and adapts to market
             conditions.
           </p>

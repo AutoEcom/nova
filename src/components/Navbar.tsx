@@ -9,7 +9,7 @@ import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 const links = [
-  { href: "/#tokenomics", label: "Tokenomics" },
+  { href: "/#tokenomics", label: "Token" },
   { href: "/#roadmap", label: "Roadmap" },
   { href: "/#ecosystem", label: "Ecosystem" },
   { href: "/#community", label: "Community" },
