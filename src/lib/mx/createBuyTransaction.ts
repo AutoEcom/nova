@@ -28,10 +28,14 @@ type CreateBuyTxParams = {
 };
 
 /**
- * Builds the payment transaction routing funds to the project treasury.
+ * Builds the *payment* leg of a $NOVA purchase (buyer → treasury).
  *
  * - EGLD  -> native transfer with a `buy-nova` memo tag.
  * - USDC  -> standard ESDTTransfer (MultiversX ESDT standard).
+ *
+ * $NOVA delivery is NOT performed here — wallets cannot spend treasury funds
+ * from the browser. After this payment confirms on-chain, `/api/nova/fulfill`
+ * verifies the payment and sends NOVA-04c5f5 from the treasury signer.
  *
  * The minimum-purchase rule is enforced here as a defense-in-depth guard, so a
  * transaction can never be constructed below the sale floor even if the UI

@@ -47,12 +47,13 @@ export const USDC_PRESETS = [5, 10, 25, 50, 100] as const;
 export const FALLBACK_EGLD_PRICE_USD = 30;
 
 /**
- * Project treasury that receives EGLD / USDC for $NOVA purchases.
- * Set NEXT_PUBLIC_TREASURY_ADDRESS in `.env.local` before mainnet payments.
+ * Project treasury that receives EGLD / USDC for $NOVA purchases and holds
+ * the $NOVA inventory used for automatic delivery after payment.
+ * Set NEXT_PUBLIC_TREASURY_ADDRESS in `.env.local` / Vercel.
  */
 export const TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ??
-  "erd1qqqqqqqqqqqqqpgqtmcuh307t6kky677ernjj9ulk64zq74w9l5qxyhdn7";
+  "erd1aufyc6j0q9aqda7cev7erad22xm7g0vhupv9rccd5xjgjgcetypqzey2me";
 
 export const isTreasuryConfigured = () =>
   Boolean(process.env.NEXT_PUBLIC_TREASURY_ADDRESS);

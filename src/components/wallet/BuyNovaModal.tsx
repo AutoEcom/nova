@@ -59,10 +59,11 @@ export function BuyNovaModal() {
   const [amount, setAmount] = useState(String(USDC_PRESETS[0]));
   const [egldPrice, setEgldPrice] = useState<number | null>(null);
   const [usdcBalance, setUsdcBalance] = useState("0");
-  const [status, setStatus] = useState<"idle" | "signing" | "success" | "error">(
-    "idle",
-  );
+  const [status, setStatus] = useState<
+    "idle" | "signing" | "delivering" | "success" | "error"
+  >("idle");
   const [error, setError] = useState<string | null>(null);
+  const [fulfillTxHash, setFulfillTxHash] = useState<string | null>(null);
 
   const price = egldPrice ?? FALLBACK_EGLD_PRICE_USD;
 
@@ -76,7 +77,11 @@ export function BuyNovaModal() {
   const minAmount = useMemo(() => minAmountFor(asset, price), [asset, price]);
   const hasAmount = Number.isFinite(amountNum) && amountNum > 0;
   const belowMinimum = hasAmount && !meetsMinimum(amountNum, asset, price);
-  const canSubmit = hasAmount && !belowMinimum && status !== "signing";
+  const canSubmit =
+    hasAmount &&
+    !belowMinimum &&
+    status !== "signing" &&
+    status !== "delivering";
 
   const presets = useMemo(() => {
     if (asset === "USDC") {
@@ -99,6 +104,7 @@ export function BuyNovaModal() {
     setAmount(String(USDC_PRESETS[0]));
     setStatus("idle");
     setError(null);
+    setFulfillTxHash(null);
     let cancelled = false;
     void (async () => {
       const p = await fetchEgldPriceUsd();
@@ -199,15 +205,46 @@ export function BuyNovaModal() {
         nonce: latest.nonce,
       });
 
-      await signAndSendTransactions({
+      const { sentTransactions } = await signAndSendTransactions({
         transactions: [tx],
         transactionsDisplayInfo: {
           processingMessage: `Sending ${asset} for $NOVA…`,
-          successMessage: "Payment sent to NOVA treasury",
+          successMessage: "Payment sent — delivering $NOVA…",
           errorMessage: "Purchase transaction failed",
         },
       });
 
+      const paymentTxHash = Array.isArray(sentTransactions[0])
+        ? sentTransactions[0][0]?.hash
+        : sentTransactions[0]?.hash;
+
+      if (!paymentTxHash) {
+        throw new Error("Payment broadcast succeeded but tx hash is missing");
+      }
+
+      // Server verifies the payment on-chain and sends $NOVA from the treasury.
+      setStatus("delivering");
+      const fulfillRes = await fetch("/api/nova/fulfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentTxHash }),
+      });
+      const fulfillJson = (await fulfillRes.json()) as {
+        ok?: boolean;
+        error?: string;
+        fulfillTxHash?: string;
+        alreadyFulfilled?: boolean;
+        code?: string;
+      };
+
+      if (!fulfillRes.ok) {
+        throw new Error(
+          fulfillJson.error ??
+            "Payment received, but automatic $NOVA delivery failed. Contact support with your payment tx hash.",
+        );
+      }
+
+      setFulfillTxHash(fulfillJson.fulfillTxHash ?? null);
       setStatus("success");
     } catch (err) {
       console.error("[NOVA] Buy transaction failed", err);
@@ -232,9 +269,11 @@ export function BuyNovaModal() {
     ? "Connect to Buy"
     : status === "signing"
       ? "Confirm in Wallet…"
-      : belowMinimum
-        ? `Minimum ${MIN_PURCHASE_USDC} USDC`
-        : `Buy ≈ ${novaFmt.format(novaOut)} NOVA`;
+      : status === "delivering"
+        ? "Delivering $NOVA…"
+        : belowMinimum
+          ? `Minimum ${MIN_PURCHASE_USDC} USDC`
+          : `Buy ≈ ${novaFmt.format(novaOut)} NOVA`;
 
   return (
     <AnimatePresence>
@@ -417,9 +456,18 @@ export function BuyNovaModal() {
               </p>
             )}
 
+            {status === "delivering" && (
+              <p className="mb-3 rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-2 font-mono text-[11px] text-cyan">
+                Payment confirmed. Sending $NOVA from the treasury to your wallet…
+              </p>
+            )}
+
             {status === "success" && (
               <p className="mb-3 rounded-xl border border-green/30 bg-green/10 px-3 py-2 font-mono text-[11px] text-green">
-                Transaction submitted. Track status in your wallet notifications.
+                $NOVA delivered to your wallet.
+                {fulfillTxHash
+                  ? ` Delivery tx: ${fulfillTxHash.slice(0, 10)}…`
+                  : ""}
               </p>
             )}
 
