@@ -179,7 +179,8 @@ export function BuyNovaModal() {
     setError(null);
 
     if (!isLoggedIn || !account.address) {
-      openConnect();
+      // Close Buy so the Connect unlock panel is not hidden underneath it.
+      openConnect({ resumeBuy: true });
       return;
     }
 

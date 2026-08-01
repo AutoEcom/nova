@@ -16,11 +16,16 @@ import type { IProviderFactory } from "@multiversx/sdk-dapp/out/providers/types/
 import { WalletConnectStateManager } from "@multiversx/sdk-dapp/out/managers/internal/WalletConnectStateManager";
 import { useMxReady } from "./MultiversXProvider";
 
+type OpenConnectOptions = {
+  /** Re-open the Buy modal after a successful wallet login. */
+  resumeBuy?: boolean;
+};
+
 type WalletUIContextValue = {
   isBuyOpen: boolean;
   openBuyModal: () => void;
   closeBuyModal: () => void;
-  openConnect: () => void;
+  openConnect: (options?: OpenConnectOptions) => void;
 };
 
 const WalletUIContext = createContext<WalletUIContextValue | null>(null);
@@ -127,10 +132,16 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
     unlockPanelManager.openUnlockPanel();
   }, [ready, finishLogin]);
 
-  const openConnect = useCallback(() => {
-    openBuyAfterLoginRef.current = false;
-    openUnlockPanel();
-  }, [openUnlockPanel]);
+  const openConnect = useCallback(
+    (options?: OpenConnectOptions) => {
+      // Always dismiss Buy first — the MultiversX unlock panel shares the same
+      // overlay stack and would otherwise render underneath the purchase dialog.
+      setIsBuyOpen(false);
+      openBuyAfterLoginRef.current = Boolean(options?.resumeBuy);
+      openUnlockPanel();
+    },
+    [openUnlockPanel],
+  );
 
   const openBuyModal = useCallback(() => {
     // Open the calculator immediately (even when not connected). The modal's

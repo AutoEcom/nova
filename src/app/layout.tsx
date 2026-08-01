@@ -25,6 +25,7 @@ export const metadata: Metadata = {
   title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
   description:
     "EVOLGO is an autonomous AI trading intelligence engine powered by $NOVA on MultiversX. Strategies that evolve with the market.",
+  applicationName: "EVOLGO",
   keywords: [
     "EVOLGO",
     "NOVA",
@@ -35,18 +36,36 @@ export const metadata: Metadata = {
     "algorithmic trading",
     "Web3",
   ],
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/evolgo-icon.png", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/favicon.ico"],
+  },
+  manifest: "/site.webmanifest",
+  appleWebApp: {
+    title: "EVOLGO",
+    capable: true,
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
     description:
       "EVOLGO is an autonomous AI trading intelligence engine that learns, evolves, and adapts — powered by $NOVA on MultiversX.",
     type: "website",
     siteName: "EVOLGO",
+    images: [{ url: "/evolgo-icon.png", width: 512, height: 512, alt: "EVOLGO" }],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "EVOLGO — Autonomous AI Trading Intelligence powered by $NOVA",
     description:
       "EVOLGO is an autonomous AI trading intelligence engine that learns, evolves, and adapts — powered by $NOVA on MultiversX.",
+    images: ["/evolgo-icon.png"],
   },
 };
 
