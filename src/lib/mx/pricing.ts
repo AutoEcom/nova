@@ -63,13 +63,22 @@ export function minAmountFor(asset: PaymentAsset, egldPriceUsd: number): number 
 
 /**
  * True when `amount` (in the chosen asset) meets the strict minimum.
- * A tiny epsilon absorbs floating-point noise so exactly-minimum inputs pass.
+ *
+ * Comparison is done in the *payment asset* (not only via USDC conversion) so
+ * EGLD amounts derived from USD presets — which are rounded to a few decimals —
+ * are not falsely rejected when `amount * egldPrice` lands a hair under $5
+ * due to floating-point / truncation noise.
  */
 export function meetsMinimum(
   amount: number,
   asset: PaymentAsset,
   egldPriceUsd: number,
 ): boolean {
-  const value = usdcValueOf(amount, asset, egldPriceUsd);
-  return value + 1e-9 >= MIN_PURCHASE_USDC;
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const min = minAmountFor(asset, egldPriceUsd);
+  if (!Number.isFinite(min) || min <= 0) return false;
+  // Absolute floor for USDC; relative slack for EGLD (6-dp display rounding).
+  const slack =
+    asset === "USDC" ? 1e-6 : Math.max(min * 1e-4, 1e-8);
+  return amount + slack >= min;
 }

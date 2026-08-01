@@ -48,6 +48,18 @@ function trimNumber(value: number, digits = 6): string {
   return value.toFixed(digits).replace(/\.?0+$/, "");
 }
 
+/**
+ * Round UP to `digits` decimals (then strip trailing zeros).
+ * Used for EGLD amounts derived from a USDC floor so display rounding never
+ * drops the payment below the $5 minimum.
+ */
+function ceilTrimNumber(value: number, digits = 6): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  const factor = 10 ** digits;
+  const ceiled = Math.ceil(value * factor - 1e-12) / factor;
+  return trimNumber(ceiled, digits);
+}
+
 export function BuyNovaModal() {
   const { isBuyOpen, closeBuyModal, openConnect } = useWalletUI();
   // Re-render (and rebind wallet hooks to the real store) once the SDK is ready.
@@ -93,7 +105,9 @@ export function BuyNovaModal() {
     }
     return USDC_PRESETS.map((usd) => {
       const egld = price > 0 ? usd / price : 0;
-      return { value: trimNumber(egld, 6), label: trimNumber(egld, 4), usd };
+      // Ceil so 5 USDC → EGLD presets always clear meetsMinimum after rounding.
+      const value = ceilTrimNumber(egld, 6);
+      return { value, label: trimNumber(Number(value), 4), usd };
     });
   }, [asset, price]);
 
@@ -149,8 +163,12 @@ export function BuyNovaModal() {
         price,
       );
       if (currentValue > 0) {
-        const converted = next === "USDC" ? currentValue : currentValue / price;
-        setAmount(trimNumber(converted, next === "USDC" ? 2 : 6));
+        if (next === "USDC") {
+          setAmount(trimNumber(currentValue, 2));
+        } else {
+          // Ceil EGLD so a $5 USDC selection doesn't land microscopically under min.
+          setAmount(ceilTrimNumber(currentValue / price, 6));
+        }
       }
       setAsset(next);
     },
@@ -201,7 +219,7 @@ export function BuyNovaModal() {
         senderAddress: latest.address,
         amount,
         asset,
-        usdcValue,
+        egldPriceUsd: price,
         nonce: latest.nonce,
       });
 
@@ -262,7 +280,7 @@ export function BuyNovaModal() {
     isLoggedIn,
     minAmount,
     openConnect,
-    usdcValue,
+    price,
   ]);
 
   const payLabel = !isLoggedIn
@@ -272,7 +290,9 @@ export function BuyNovaModal() {
       : status === "delivering"
         ? "Delivering $NOVA…"
         : belowMinimum
-          ? `Minimum ${MIN_PURCHASE_USDC} USDC`
+          ? asset === "EGLD"
+            ? `Minimum ≈ ${trimNumber(minAmount, 6)} EGLD`
+            : `Minimum ${MIN_PURCHASE_USDC} USDC`
           : `Buy ≈ ${novaFmt.format(novaOut)} NOVA`;
 
   return (

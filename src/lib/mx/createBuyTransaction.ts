@@ -14,7 +14,7 @@ import {
   USDC_TOKEN_ID,
 } from "@/config/network";
 import { parseAmountToAtomic } from "./format";
-import type { PaymentAsset } from "./pricing";
+import { meetsMinimum, type PaymentAsset } from "./pricing";
 
 export type { PaymentAsset };
 
@@ -22,8 +22,8 @@ type CreateBuyTxParams = {
   senderAddress: string;
   amount: string;
   asset: PaymentAsset;
-  /** USDC-equivalent value of the payment, used to enforce the sale minimum. */
-  usdcValue: number;
+  /** Spot EGLD/USD used with {@link meetsMinimum} for the sale floor. */
+  egldPriceUsd: number;
   nonce: number;
 };
 
@@ -45,10 +45,11 @@ export async function createBuyNovaTransaction({
   senderAddress,
   amount,
   asset,
-  usdcValue,
+  egldPriceUsd,
   nonce,
 }: CreateBuyTxParams) {
-  if (!Number.isFinite(usdcValue) || usdcValue + 1e-9 < MIN_PURCHASE_USDC) {
+  const amountNum = Number(amount);
+  if (!meetsMinimum(amountNum, asset, egldPriceUsd)) {
     throw new Error(`Minimum purchase is ${MIN_PURCHASE_USDC} USDC`);
   }
 

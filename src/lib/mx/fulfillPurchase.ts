@@ -20,7 +20,7 @@ import {
   USDC_DECIMALS,
   USDC_TOKEN_ID,
 } from "@/config/network";
-import { fetchEgldPriceUsd } from "@/lib/mx/pricing";
+import { fetchEgldPriceUsd, meetsMinimum } from "@/lib/mx/pricing";
 import { loadTreasuryAccount } from "@/lib/mx/treasuryAccount";
 
 const FULFILL_PREFIX = "nova-fill:";
@@ -208,7 +208,7 @@ async function computeNovaOut(
 ): Promise<{ usdcValue: number; novaHuman: number; novaAtomic: bigint }> {
   if (asset === "USDC") {
     const usdcValue = atomicToHuman(paidAtomic, decimals);
-    if (!Number.isFinite(usdcValue) || usdcValue + 1e-9 < MIN_PURCHASE_USDC) {
+    if (!meetsMinimum(usdcValue, "USDC", 1)) {
       throw new Error(
         `Payment below minimum (${MIN_PURCHASE_USDC} USDC). Got ${usdcValue.toFixed(4)} USDC`,
       );
@@ -229,7 +229,7 @@ async function computeNovaOut(
   const egldHuman = atomicToHuman(paidAtomic, decimals);
   const egldPrice = (await fetchEgldPriceUsd()) || FALLBACK_EGLD_PRICE_USD;
   const usdcValue = egldHuman * egldPrice;
-  if (!Number.isFinite(usdcValue) || usdcValue + 1e-9 < MIN_PURCHASE_USDC) {
+  if (!meetsMinimum(egldHuman, "EGLD", egldPrice)) {
     throw new Error(
       `Payment below minimum (${MIN_PURCHASE_USDC} USDC equivalent). Got ≈ ${usdcValue.toFixed(4)} USDC`,
     );
