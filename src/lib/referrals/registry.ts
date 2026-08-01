@@ -24,7 +24,7 @@ export type ReferralLedgerEntry = {
   rewardNovaAtomic: string;
   rewardTxHash: string | null;
   createdAt: string;
-  status: "paid" | "skipped" | "failed";
+  status: "paid" | "skipped" | "failed" | "accrued" | "claimed";
   reason?: string;
 };
 
@@ -114,10 +114,16 @@ function attributionToLedger(
   row: AttributionRow,
   tier: ReferralTierId = DEFAULT_REFERRAL_TIER,
 ): ReferralLedgerEntry {
-  const status =
-    row.status === "paid" || row.status === "failed" || row.status === "skipped"
-      ? row.status
-      : "skipped";
+  const allowed = new Set([
+    "paid",
+    "failed",
+    "skipped",
+    "accrued",
+    "claimed",
+  ]);
+  const status = allowed.has(row.status)
+    ? (row.status as ReferralLedgerEntry["status"])
+    : "skipped";
   return {
     paymentTxHash: (row.payment_tx_hash ?? "").toLowerCase(),
     buyer: row.referred_wallet,
@@ -257,6 +263,7 @@ export async function appendLedgerEntry(
   const supabase = db();
   const paymentHash = entry.paymentTxHash.toLowerCase();
   const amountHuman = atomicToHumanNumber(entry.rewardNovaAtomic);
+  const previous = paymentHash ? await findLedgerByPayment(paymentHash) : null;
 
   const { error } = await supabase.from("referral_attributions").upsert(
     {
@@ -278,12 +285,28 @@ export async function appendLedgerEntry(
     throw new Error(error.message);
   }
 
-  if (entry.status === "paid" && entry.referrer) {
-    await creditReferrerBalance(entry.referrer, amountHuman);
+  const alreadyCredited =
+    previous?.status === "accrued" ||
+    previous?.status === "paid" ||
+    previous?.status === "claimed";
+
+  if (
+    !alreadyCredited &&
+    (entry.status === "accrued" || entry.status === "paid") &&
+    entry.referrer &&
+    amountHuman > 0
+  ) {
+    // Accrue into claimable. On-chain auto-payouts with a reward hash count as claimed.
+    const asClaimable = entry.status === "accrued" || !entry.rewardTxHash;
+    if (asClaimable) {
+      await creditClaimableBalance(entry.referrer, amountHuman);
+    } else {
+      await creditClaimedBalance(entry.referrer, amountHuman);
+    }
   }
 }
 
-async function creditReferrerBalance(
+async function creditClaimableBalance(
   walletRaw: string,
   amountNova: number,
 ): Promise<void> {
@@ -300,7 +323,35 @@ async function creditReferrerBalance(
   const claimable = Number(row?.claimable_balance ?? 0);
   const claimed = Number(row?.total_claimed ?? 0);
 
-  // Immediate on-chain payouts count as claimed; claimable stays for future claim flow.
+  const { error } = await supabase.from("referral_balances").upsert(
+    {
+      wallet_address: wallet,
+      claimable_balance: claimable + amountNova,
+      total_claimed: claimed,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "wallet_address" },
+  );
+  if (error) throw new Error(error.message);
+}
+
+async function creditClaimedBalance(
+  walletRaw: string,
+  amountNova: number,
+): Promise<void> {
+  if (!(amountNova > 0)) return;
+  const wallet = walletRaw.toLowerCase();
+  const supabase = db();
+  const { data: existing } = await supabase
+    .from("referral_balances")
+    .select("wallet_address, claimable_balance, total_claimed")
+    .eq("wallet_address", wallet)
+    .maybeSingle();
+
+  const row = existing as BalanceRow | null;
+  const claimable = Number(row?.claimable_balance ?? 0);
+  const claimed = Number(row?.total_claimed ?? 0);
+
   const { error } = await supabase.from("referral_balances").upsert(
     {
       wallet_address: wallet,
@@ -311,6 +362,104 @@ async function creditReferrerBalance(
     { onConflict: "wallet_address" },
   );
   if (error) throw new Error(error.message);
+}
+
+/** Move claimable → total_claimed after a successful on-chain claim transfer. */
+export async function settleClaimableBalance(
+  walletRaw: string,
+  amountNova: number,
+): Promise<{ claimableBalance: number; totalClaimed: number }> {
+  const wallet = walletRaw.toLowerCase();
+  const supabase = db();
+  const { data: existing, error: readError } = await supabase
+    .from("referral_balances")
+    .select("wallet_address, claimable_balance, total_claimed")
+    .eq("wallet_address", wallet)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+
+  const row = existing as BalanceRow | null;
+  const claimable = Number(row?.claimable_balance ?? 0);
+  const claimed = Number(row?.total_claimed ?? 0);
+  if (amountNova > claimable + 1e-9) {
+    throw new Error("Claim amount exceeds claimable balance");
+  }
+
+  const nextClaimable = Math.max(0, claimable - amountNova);
+  const nextClaimed = claimed + amountNova;
+  const { error } = await supabase.from("referral_balances").upsert(
+    {
+      wallet_address: wallet,
+      claimable_balance: nextClaimable,
+      total_claimed: nextClaimed,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "wallet_address" },
+  );
+  if (error) throw new Error(error.message);
+
+  // Mark accrued attributions as claimed for this referrer.
+  await supabase
+    .from("referral_attributions")
+    .update({ status: "claimed" })
+    .eq("referrer_wallet", wallet)
+    .in("status", ["accrued", "paid"]);
+
+  return { claimableBalance: nextClaimable, totalClaimed: nextClaimed };
+}
+
+/**
+ * Heal balances where rewards were recorded as paid without an on-chain tx hash
+ * (or still sit only in attributions). Ensures Claim Rewards has a balance.
+ */
+export async function healClaimableFromAttributions(
+  addressRaw: string,
+): Promise<void> {
+  const wallet = addressRaw.trim().toLowerCase();
+  if (!wallet) return;
+  const supabase = db();
+
+  const { data, error } = await supabase
+    .from("referral_attributions")
+    .select(
+      "id, amount_nova, amount_nova_atomic, reward_tx_hash, status, referrer_wallet",
+    )
+    .eq("referrer_wallet", wallet)
+    .in("status", ["accrued", "paid"]);
+
+  if (error || !data?.length) return;
+
+  let pending = 0;
+  for (const row of data as Array<{
+    amount_nova: number | string | null;
+    reward_tx_hash: string | null;
+    status: string;
+  }>) {
+    // Already settled on-chain with a reward hash → not claimable.
+    if (row.status === "paid" && row.reward_tx_hash) continue;
+    pending += Number(row.amount_nova ?? 0);
+  }
+
+  if (!(pending > 0)) return;
+
+  const balance = await getReferralBalance(wallet);
+  const claimable = Number(balance?.claimableBalance ?? 0);
+  const claimed = Number(balance?.totalClaimed ?? 0);
+  // Only top-up when claimable is behind the pending attribution sum.
+  if (claimable + 1e-9 >= pending) return;
+
+  const { error: upError } = await supabase.from("referral_balances").upsert(
+    {
+      wallet_address: wallet,
+      claimable_balance: pending,
+      total_claimed: claimed,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "wallet_address" },
+  );
+  if (upError) {
+    console.warn("[NOVA] healClaimableFromAttributions failed", upError);
+  }
 }
 
 export async function listLedgerForReferrer(

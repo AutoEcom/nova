@@ -4,7 +4,8 @@ import { isTreasurySignerConfigured } from "@/lib/mx/treasuryAccount";
 import { normalizeReferralCode } from "@/lib/referrals/codeFormat";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+/** Allow payment confirmation + NOVA broadcast + on-chain confirm. */
+export const maxDuration = 120;
 
 type Body = {
   paymentTxHash?: string;
@@ -17,7 +18,7 @@ type Body = {
  *
  * After the buyer pays EGLD/USDC to the treasury, the client calls this route.
  * The server verifies the payment on-chain, sends the matching $NOVA amount
- * from the treasury wallet to the buyer, and optionally pays a referral bonus.
+ * from the treasury wallet to the buyer, and accrues referral rewards.
  */
 export async function POST(request: Request) {
   try {
@@ -41,8 +42,22 @@ export async function POST(request: Request) {
       );
     }
 
+    console.info("[NOVA] /api/nova/fulfill", {
+      paymentTxHash,
+      hasReferral: Boolean(body.referralCode),
+    });
+
     const referralCode = normalizeReferralCode(body.referralCode ?? null);
     const result = await fulfillNovaPurchase(paymentTxHash, { referralCode });
+
+    console.info("[NOVA] /api/nova/fulfill ok", {
+      paymentTxHash: result.paymentTxHash,
+      fulfillTxHash: result.fulfillTxHash,
+      alreadyFulfilled: result.alreadyFulfilled,
+      buyer: result.buyer,
+      novaAmountAtomic: result.novaAmountAtomic,
+    });
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("[NOVA] Fulfillment failed", err);

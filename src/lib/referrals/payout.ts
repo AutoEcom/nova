@@ -1,30 +1,21 @@
-import {
-  Address,
-  MainnetEntrypoint,
-  Token,
-  TokenTransfer,
-  TransferTransactionsFactory,
-  TransactionsFactoryConfig,
-  type Account,
-} from "@multiversx/sdk-core";
-import {
-  API_URL,
-  CHAIN_ID,
-  NOVA_TOKEN_ID,
-  TREASURY_ADDRESS,
-} from "@/config/network";
+import type { Account } from "@multiversx/sdk-core";
+import { NOVA_DECIMALS } from "@/config/network";
 import { getReferralTier } from "@/config/referrals";
 import {
   appendLedgerEntry,
   findLedgerByPayment,
+  getReferralBalance,
   resolveReferralCode,
+  settleClaimableBalance,
   type ReferralLedgerEntry,
 } from "@/lib/referrals/registry";
-
-const REF_RECEIPT_PREFIX = "nova-ref:";
+import { sendNovaFromTreasury } from "@/lib/mx/sendNova";
+import { loadTreasuryAccount } from "@/lib/mx/treasuryAccount";
+import { API_URL, NOVA_TOKEN_ID, TREASURY_ADDRESS } from "@/config/network";
 
 export type ReferralPayoutResult = {
   attempted: boolean;
+  /** True when reward was accrued to claimable (not necessarily claimed on-chain). */
   paid: boolean;
   rewardTxHash: string | null;
   rewardNovaAtomic: string;
@@ -33,12 +24,14 @@ export type ReferralPayoutResult = {
   reason?: string;
 };
 
-function createEntrypoint() {
-  return new MainnetEntrypoint({
-    url: API_URL,
-    kind: "api",
-  });
-}
+export type ClaimRewardsResult = {
+  ok: true;
+  claimTxHash: string;
+  claimedNova: number;
+  claimedNovaAtomic: string;
+  claimableBalance: number;
+  totalClaimed: number;
+};
 
 /** Integer-safe: reward = buyerNova * bps / 10_000 */
 export function rewardAtomicForPurchase(
@@ -49,63 +42,14 @@ export function rewardAtomicForPurchase(
   return (buyerNovaAtomic * BigInt(rewardBps)) / BigInt(10_000);
 }
 
-async function sendNovaTransfer(
-  treasury: Account,
-  receiver: string,
-  novaAtomic: bigint,
-): Promise<string> {
-  const entrypoint = createEntrypoint();
-  treasury.nonce = await entrypoint.recallAccountNonce(treasury.address);
-
-  const factory = new TransferTransactionsFactory({
-    config: new TransactionsFactoryConfig({ chainID: CHAIN_ID }),
-  });
-  const nova = new Token({ identifier: NOVA_TOKEN_ID });
-  const transfer = new TokenTransfer({ token: nova, amount: novaAtomic });
-  const tx = await factory.createTransactionForESDTTokenTransfer(
-    treasury.address,
-    {
-      receiver: Address.newFromBech32(receiver),
-      tokenTransfers: [transfer],
-    },
-  );
-  tx.nonce = treasury.getNonceThenIncrement();
-  tx.signature = await treasury.signTransaction(tx);
-  return entrypoint.sendTransaction(tx);
+function humanToAtomic(human: number): bigint {
+  if (!Number.isFinite(human) || human <= 0) return BigInt(0);
+  const scaled = Math.round(human * 10 ** Math.min(NOVA_DECIMALS, 8));
+  const extra =
+    NOVA_DECIMALS > 8 ? BigInt(10) ** BigInt(NOVA_DECIMALS - 8) : BigInt(1);
+  return BigInt(scaled) * extra;
 }
 
-async function sendReferralReceipt(
-  treasury: Account,
-  paymentTxHash: string,
-): Promise<void> {
-  try {
-    const entrypoint = createEntrypoint();
-    treasury.nonce = await entrypoint.recallAccountNonce(treasury.address);
-    const factory = new TransferTransactionsFactory({
-      config: new TransactionsFactoryConfig({ chainID: CHAIN_ID }),
-    });
-    const receiptTx = await factory.createTransactionForNativeTokenTransfer(
-      treasury.address,
-      {
-        receiver: treasury.address,
-        nativeAmount: BigInt(0),
-        data: new TextEncoder().encode(
-          `${REF_RECEIPT_PREFIX}${paymentTxHash}`,
-        ),
-      },
-    );
-    receiptTx.nonce = treasury.getNonceThenIncrement();
-    receiptTx.signature = await treasury.signTransaction(receiptTx);
-    await entrypoint.sendTransaction(receiptTx);
-  } catch (err) {
-    console.warn("[NOVA] Referral receipt tx failed", err);
-  }
-}
-
-/**
- * After a successful buyer NOVA delivery, attribute and pay the referrer.
- * Failures are recorded but never throw — purchase fulfillment must stay intact.
- */
 async function getTreasuryNovaBalanceAtomic(): Promise<bigint> {
   try {
     const res = await fetch(
@@ -120,18 +64,26 @@ async function getTreasuryNovaBalanceAtomic(): Promise<bigint> {
   }
 }
 
-export async function maybePayReferralReward(params: {
+/**
+ * Accrue the referrer's cut into Supabase `claimable_balance`.
+ * Does NOT send tokens on purchase — the operator claims via /api/referrals/claim.
+ * This keeps buyer fulfillment fast and avoids treasury nonce races.
+ */
+export async function maybeAccrueReferralReward(params: {
   paymentTxHash: string;
   buyer: string;
   buyerNovaAtomic: bigint;
   referralCode: string | null | undefined;
-  treasury: Account;
 }): Promise<ReferralPayoutResult> {
-  const { paymentTxHash, buyer, buyerNovaAtomic, referralCode, treasury } =
-    params;
+  const { paymentTxHash, buyer, buyerNovaAtomic, referralCode } = params;
 
   const existing = await findLedgerByPayment(paymentTxHash);
-  if (existing?.status === "paid" && existing.rewardTxHash) {
+  if (
+    existing &&
+    (existing.status === "accrued" ||
+      existing.status === "paid" ||
+      existing.status === "claimed")
+  ) {
     return {
       attempted: true,
       paid: true,
@@ -139,7 +91,7 @@ export async function maybePayReferralReward(params: {
       rewardNovaAtomic: existing.rewardNovaAtomic,
       referrer: existing.referrer,
       code: existing.code,
-      reason: "already_paid",
+      reason: "already_recorded",
     };
   }
 
@@ -157,7 +109,7 @@ export async function maybePayReferralReward(params: {
 
   const record = await resolveReferralCode(referralCode);
   if (!record) {
-    const entry: ReferralLedgerEntry = {
+    await appendLedgerEntry({
       paymentTxHash: paymentTxHash.toLowerCase(),
       buyer,
       referrer: "",
@@ -169,8 +121,7 @@ export async function maybePayReferralReward(params: {
       createdAt: new Date().toISOString(),
       status: "skipped",
       reason: "unknown_code",
-    };
-    await appendLedgerEntry(entry);
+    });
     return {
       attempted: true,
       paid: false,
@@ -183,7 +134,7 @@ export async function maybePayReferralReward(params: {
   }
 
   if (record.address.toLowerCase() === buyer.toLowerCase()) {
-    const entry: ReferralLedgerEntry = {
+    await appendLedgerEntry({
       paymentTxHash: paymentTxHash.toLowerCase(),
       buyer,
       referrer: record.address,
@@ -195,8 +146,7 @@ export async function maybePayReferralReward(params: {
       createdAt: new Date().toISOString(),
       status: "skipped",
       reason: "self_referral",
-    };
-    await appendLedgerEntry(entry);
+    });
     return {
       attempted: true,
       paid: false,
@@ -222,86 +172,94 @@ export async function maybePayReferralReward(params: {
     };
   }
 
-  // Buyer NOVA already left the treasury — re-check remaining inventory.
-  const treasuryNovaBalance = await getTreasuryNovaBalanceAtomic();
-  if (treasuryNovaBalance < rewardAtomic) {
-    const entry: ReferralLedgerEntry = {
-      paymentTxHash: paymentTxHash.toLowerCase(),
-      buyer,
-      referrer: record.address,
-      code: record.code,
-      tier: record.tier,
-      buyerNovaAtomic: buyerNovaAtomic.toString(),
-      rewardNovaAtomic: rewardAtomic.toString(),
-      rewardTxHash: null,
-      createdAt: new Date().toISOString(),
-      status: "failed",
-      reason: "insufficient_treasury",
-    };
-    await appendLedgerEntry(entry);
-    return {
-      attempted: true,
-      paid: false,
-      rewardTxHash: null,
-      rewardNovaAtomic: rewardAtomic.toString(),
-      referrer: record.address,
-      code: record.code,
-      reason: "insufficient_treasury",
-    };
+  const entry: ReferralLedgerEntry = {
+    paymentTxHash: paymentTxHash.toLowerCase(),
+    buyer,
+    referrer: record.address,
+    code: record.code,
+    tier: record.tier,
+    buyerNovaAtomic: buyerNovaAtomic.toString(),
+    rewardNovaAtomic: rewardAtomic.toString(),
+    rewardTxHash: null,
+    createdAt: new Date().toISOString(),
+    status: "accrued",
+  };
+  await appendLedgerEntry(entry);
+
+  return {
+    attempted: true,
+    paid: true,
+    rewardTxHash: null,
+    rewardNovaAtomic: rewardAtomic.toString(),
+    referrer: record.address,
+    code: record.code,
+    reason: "accrued",
+  };
+}
+
+/** @deprecated Use maybeAccrueReferralReward — kept name alias for clarity in logs. */
+export const maybePayReferralReward = maybeAccrueReferralReward;
+
+const claimInFlight = new Map<string, Promise<ClaimRewardsResult>>();
+
+/**
+ * Send all claimable referral NOVA from the treasury to the operator wallet
+ * and settle Supabase balances.
+ */
+export async function claimReferralRewards(
+  addressRaw: string,
+): Promise<ClaimRewardsResult> {
+  const address = addressRaw.trim().toLowerCase();
+  if (!/^erd1[a-z0-9]{58}$/.test(address)) {
+    throw new Error("Invalid MultiversX address");
   }
 
-  try {
-    const rewardTxHash = await sendNovaTransfer(
-      treasury,
-      record.address,
-      rewardAtomic,
-    );
-    await sendReferralReceipt(treasury, paymentTxHash.toLowerCase());
-    const entry: ReferralLedgerEntry = {
-      paymentTxHash: paymentTxHash.toLowerCase(),
-      buyer,
-      referrer: record.address,
-      code: record.code,
-      tier: record.tier,
-      buyerNovaAtomic: buyerNovaAtomic.toString(),
-      rewardNovaAtomic: rewardAtomic.toString(),
-      rewardTxHash,
-      createdAt: new Date().toISOString(),
-      status: "paid",
-    };
-    await appendLedgerEntry(entry);
-    return {
-      attempted: true,
-      paid: true,
-      rewardTxHash,
-      rewardNovaAtomic: rewardAtomic.toString(),
-      referrer: record.address,
-      code: record.code,
-    };
-  } catch (err) {
-    console.error("[NOVA] Referral payout failed", err);
-    const entry: ReferralLedgerEntry = {
-      paymentTxHash: paymentTxHash.toLowerCase(),
-      buyer,
-      referrer: record.address,
-      code: record.code,
-      tier: record.tier,
-      buyerNovaAtomic: buyerNovaAtomic.toString(),
-      rewardNovaAtomic: rewardAtomic.toString(),
-      rewardTxHash: null,
-      createdAt: new Date().toISOString(),
-      status: "failed",
-      reason: err instanceof Error ? err.message : "payout_failed",
-    };
-    await appendLedgerEntry(entry);
-    return {
-      attempted: true,
-      paid: false,
-      rewardTxHash: null,
-      rewardNovaAtomic: rewardAtomic.toString(),
-      referrer: record.address,
-      code: record.code,
-      reason: "payout_failed",
-    };
+  const existing = claimInFlight.get(address);
+  if (existing) return existing;
+
+  const job = claimReferralRewardsUnlocked(address).finally(() => {
+    claimInFlight.delete(address);
+  });
+  claimInFlight.set(address, job);
+  return job;
+}
+
+async function claimReferralRewardsUnlocked(
+  address: string,
+): Promise<ClaimRewardsResult> {
+  const balance = await getReferralBalance(address);
+  const claimable = Number(balance?.claimableBalance ?? 0);
+  if (!(claimable > 0)) {
+    throw new Error("No claimable referral rewards");
   }
+
+  const amountAtomic = humanToAtomic(claimable);
+  if (amountAtomic <= BigInt(0)) {
+    throw new Error("Claimable amount too small to transfer");
+  }
+
+  const treasuryBal = await getTreasuryNovaBalanceAtomic();
+  if (treasuryBal < amountAtomic) {
+    throw new Error(
+      `Treasury NOVA balance too low for claim. Need ${amountAtomic.toString()}, have ${treasuryBal.toString()}`,
+    );
+  }
+
+  const treasury: Account = loadTreasuryAccount();
+  const claimTxHash = await sendNovaFromTreasury(
+    treasury,
+    address,
+    amountAtomic,
+    { confirm: true },
+  );
+
+  const settled = await settleClaimableBalance(address, claimable);
+  return {
+    ok: true,
+    claimTxHash,
+    claimedNova: claimable,
+    claimedNovaAtomic: amountAtomic.toString(),
+    claimableBalance: settled.claimableBalance,
+    totalClaimed: settled.totalClaimed,
+  };
 }

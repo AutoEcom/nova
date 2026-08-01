@@ -32,7 +32,7 @@ const FEATURE_CARDS = [
   },
   {
     title: "Treasury-routed payouts",
-    body: "Rewards clear automatically from the protocol treasury — no custody queues, no manual claims.",
+    body: "Claim accrued $NOVA on demand — routed straight from the protocol treasury to your wallet.",
   },
   {
     title: "Operator leaderboards",
@@ -50,6 +50,8 @@ type ReferralMeResponse = {
   stats?: {
     attributedBuys?: number;
     totalRewardAtomic?: string;
+    claimableBalance?: number;
+    totalClaimed?: number;
   };
   error?: string;
 };
@@ -72,6 +74,14 @@ function formatNovaAtomic(atomic: string | undefined): string {
   }
 }
 
+function formatNovaHuman(amount: number | undefined): string {
+  if (!Number.isFinite(amount) || !amount) return "0";
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+}
+
 export function ReferralsProgram() {
   const isLoggedIn = useGetIsLoggedIn();
   const account = useGetAccount();
@@ -82,9 +92,16 @@ export function ReferralsProgram() {
     getReferralTier().rewardPercent,
   );
   const [tierLabel, setTierLabel] = useState(getReferralTier().label);
-  const [stats, setStats] = useState({ buys: 0, rewardNova: "0" });
+  const [stats, setStats] = useState({
+    buys: 0,
+    rewardNova: "0",
+    claimable: 0,
+    claimed: 0,
+  });
   const [loading, setLoading] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const loadProfile = useCallback(async (address: string) => {
@@ -105,6 +122,8 @@ export function ReferralsProgram() {
       setStats({
         buys: json.stats?.attributedBuys ?? 0,
         rewardNova: formatNovaAtomic(json.stats?.totalRewardAtomic),
+        claimable: Number(json.stats?.claimableBalance ?? 0),
+        claimed: Number(json.stats?.totalClaimed ?? 0),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load referrals");
@@ -119,6 +138,7 @@ export function ReferralsProgram() {
     } else {
       setCode(null);
       setInviteUrl(null);
+      setStats({ buys: 0, rewardNova: "0", claimable: 0, claimed: 0 });
     }
   }, [isLoggedIn, account.address, loadProfile]);
 
@@ -126,6 +146,8 @@ export function ReferralsProgram() {
     () => inviteUrl ?? "Connect wallet to generate your invite link",
     [inviteUrl],
   );
+
+  const canClaim = isLoggedIn && stats.claimable > 0 && !claiming;
 
   const handleCopy = useCallback(async () => {
     if (!inviteUrl) return;
@@ -137,6 +159,46 @@ export function ReferralsProgram() {
       setError("Clipboard unavailable — copy the link manually");
     }
   }, [inviteUrl]);
+
+  const handleClaim = useCallback(async () => {
+    if (!account.address || !canClaim) return;
+    setClaiming(true);
+    setError(null);
+    setClaimMessage(null);
+    try {
+      const res = await fetch("/api/referrals/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: account.address }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        claimTxHash?: string;
+        claimedNova?: number;
+        claimableBalance?: number;
+        totalClaimed?: number;
+      };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? "Claim failed");
+      }
+      setStats((prev) => ({
+        ...prev,
+        claimable: Number(json.claimableBalance ?? 0),
+        claimed: Number(json.totalClaimed ?? prev.claimed),
+      }));
+      setClaimMessage(
+        json.claimTxHash
+          ? `Claimed ${formatNovaHuman(json.claimedNova)} NOVA`
+          : "Rewards claimed",
+      );
+      await loadProfile(account.address);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Claim failed");
+    } finally {
+      setClaiming(false);
+    }
+  }, [account.address, canClaim, loadProfile]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -171,6 +233,9 @@ export function ReferralsProgram() {
             {error && (
               <p className="mt-2 font-mono text-[11px] text-magenta">{error}</p>
             )}
+            {claimMessage && !error && (
+              <p className="mt-2 font-mono text-[11px] text-green">{claimMessage}</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {!isLoggedIn ? (
@@ -190,31 +255,58 @@ export function ReferralsProgram() {
         </div>
 
         {isLoggedIn && (
-          <div className="mt-6 grid gap-3 border-t border-white/8 pt-5 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                Tier
-              </p>
-              <p className="mt-1 font-display text-lg font-semibold text-cyan">
-                {tierLabel}
-              </p>
+          <div className="mt-6 space-y-4 border-t border-white/8 pt-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+                  Tier
+                </p>
+                <p className="mt-1 font-display text-lg font-semibold text-cyan">
+                  {tierLabel}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+                  Attributed buys
+                </p>
+                <p className="mt-1 font-display text-lg font-semibold">
+                  {stats.buys}
+                </p>
+              </div>
+              <div className="rounded-xl border border-cyan/30 bg-cyan/10 px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan">
+                  Claimable
+                </p>
+                <p className="mt-1 font-display text-lg font-semibold">
+                  {formatNovaHuman(stats.claimable)}{" "}
+                  <span className="text-sm text-muted">NOVA</span>
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+                  Lifetime earned
+                </p>
+                <p className="mt-1 font-display text-lg font-semibold">
+                  {stats.rewardNova}{" "}
+                  <span className="text-sm text-muted">NOVA</span>
+                </p>
+              </div>
             </div>
-            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                Attributed buys
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-mono text-[11px] text-muted">
+                Claimed to date:{" "}
+                <span className="text-foreground">
+                  {formatNovaHuman(stats.claimed)} NOVA
+                </span>
               </p>
-              <p className="mt-1 font-display text-lg font-semibold">
-                {stats.buys}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                Rewards paid
-              </p>
-              <p className="mt-1 font-display text-lg font-semibold">
-                {stats.rewardNova}{" "}
-                <span className="text-sm text-muted">NOVA</span>
-              </p>
+              <GlowButton
+                variant="purple"
+                onClick={handleClaim}
+                className={!canClaim ? "pointer-events-none opacity-45" : ""}
+              >
+                {claiming ? "Claiming…" : "Claim Rewards"}
+              </GlowButton>
             </div>
           </div>
         )}

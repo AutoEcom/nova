@@ -1,15 +1,6 @@
-import {
-  Account,
-  Address,
-  MainnetEntrypoint,
-  Token,
-  TokenTransfer,
-  TransferTransactionsFactory,
-  TransactionsFactoryConfig,
-} from "@multiversx/sdk-core";
+import type { Account } from "@multiversx/sdk-core";
 import {
   API_URL,
-  CHAIN_ID,
   EGLD_DECIMALS,
   FALLBACK_EGLD_PRICE_USD,
   MIN_PURCHASE_USDC,
@@ -21,11 +12,15 @@ import {
   USDC_TOKEN_ID,
 } from "@/config/network";
 import { fetchEgldPriceUsd, meetsMinimum } from "@/lib/mx/pricing";
+import {
+  sendNovaFromTreasury,
+  sendTreasuryMemoReceipt,
+} from "@/lib/mx/sendNova";
 import { loadTreasuryAccount } from "@/lib/mx/treasuryAccount";
 
 const FULFILL_PREFIX = "nova-fill:";
-const TX_POLL_ATTEMPTS = 24;
-const TX_POLL_MS = 2500;
+const TX_POLL_ATTEMPTS = 36;
+const TX_POLL_MS = 2000;
 
 /** In-flight locks so concurrent fulfill requests for the same payment don't double-send. */
 const inFlight = new Map<string, Promise<FulfillResult>>();
@@ -74,12 +69,16 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function sameAddress(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 function decodeTxData(data?: string): string {
   if (!data) return "";
   try {
     if (/^[A-Za-z0-9+/=]+$/.test(data) && data.length % 4 === 0) {
       const decoded = Buffer.from(data, "base64").toString("utf8");
-      // Prefer decoded form when it looks like ASCII protocol data.
       if (/^[\x20-\x7E]+$/.test(decoded)) return decoded;
     }
     return data;
@@ -109,8 +108,12 @@ async function waitForSuccessfulPayment(txHash: string): Promise<ApiTransaction>
           `Payment transaction ${txHash} failed on-chain (${tx.status})`,
         );
       }
+      lastError = new Error(
+        `Payment ${txHash} still ${tx.status ?? "pending"}`,
+      );
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      if (lastError.message.includes("failed on-chain")) throw lastError;
     }
     await sleep(TX_POLL_MS);
   }
@@ -128,8 +131,10 @@ function parsePayment(tx: ApiTransaction): {
   const ops = tx.operations ?? [];
   const usdcOp = ops.find(
     (op) =>
-      op.receiver === TREASURY_ADDRESS &&
-      (op.type === "esdtTransfer" || op.type === "ESDTTransfer") &&
+      sameAddress(op.receiver, TREASURY_ADDRESS) &&
+      (op.type === "esdtTransfer" ||
+        op.type === "ESDTTransfer" ||
+        op.type === "token") &&
       op.identifier === USDC_TOKEN_ID,
   );
   if (usdcOp?.value) {
@@ -143,8 +148,11 @@ function parsePayment(tx: ApiTransaction): {
 
   const egldOp = ops.find(
     (op) =>
-      op.receiver === TREASURY_ADDRESS &&
-      (op.type === "egld" || op.type === "EGLD" || op.type === "transfer") &&
+      sameAddress(op.receiver, TREASURY_ADDRESS) &&
+      (op.type === "egld" ||
+        op.type === "EGLD" ||
+        op.type === "transfer" ||
+        op.type === "WriteLog") &&
       op.value &&
       BigInt(op.value) > BigInt(0) &&
       !op.identifier,
@@ -159,7 +167,7 @@ function parsePayment(tx: ApiTransaction): {
   }
 
   const native = BigInt(tx.value ?? "0");
-  if (native > BigInt(0) && tx.receiver === TREASURY_ADDRESS) {
+  if (native > BigInt(0) && sameAddress(tx.receiver, TREASURY_ADDRESS)) {
     return {
       buyer: tx.sender,
       asset: "EGLD",
@@ -177,7 +185,7 @@ function parsePayment(tx: ApiTransaction): {
     if (tokenId !== USDC_TOKEN_ID) {
       throw new Error(`Unsupported ESDT payment token: ${tokenId}`);
     }
-    if (tx.receiver !== TREASURY_ADDRESS) {
+    if (!sameAddress(tx.receiver, TREASURY_ADDRESS)) {
       throw new Error("ESDT payment receiver is not the treasury");
     }
     return {
@@ -221,7 +229,6 @@ async function computeNovaOut(
         `Payment below minimum (${MIN_PURCHASE_USDC} USDC). Got ${usdcValue.toFixed(4)} USDC`,
       );
     }
-    // Exact: 1 USDC = 100 NOVA → novaAtomic = usdcAtomic * 100 * 10^(NOVA_DECIMALS - USDC_DECIMALS)
     const exp = NOVA_DECIMALS - decimals;
     const novaAtomic =
       exp >= 0
@@ -252,12 +259,16 @@ async function computeNovaOut(
 
 async function findReceiptTxHash(paymentTxHash: string): Promise<string | null> {
   const needle = `${FULFILL_PREFIX}${paymentTxHash}`.toLowerCase();
-  const txs = await fetchJson<ApiTransaction[]>(
-    `${API_URL}/accounts/${TREASURY_ADDRESS}/transactions?size=50&status=success`,
-  );
-  for (const tx of txs) {
-    const data = decodeTxData(tx.data).toLowerCase();
-    if (data.includes(needle) && tx.txHash) return tx.txHash;
+  try {
+    const txs = await fetchJson<ApiTransaction[]>(
+      `${API_URL}/accounts/${TREASURY_ADDRESS}/transactions?size=50&status=success`,
+    );
+    for (const tx of txs) {
+      const data = decodeTxData(tx.data).toLowerCase();
+      if (data.includes(needle) && tx.txHash) return tx.txHash;
+    }
+  } catch (err) {
+    console.warn("[NOVA] Receipt lookup failed", err);
   }
   return null;
 }
@@ -267,25 +278,29 @@ async function findMatchingNovaTransfer(args: {
   novaAtomic: bigint;
   paymentTimestamp?: number;
 }): Promise<string | null> {
-  const txs = await fetchJson<ApiTransaction[]>(
-    `${API_URL}/accounts/${TREASURY_ADDRESS}/transactions?size=40&status=success&token=${NOVA_TOKEN_ID}`,
-  );
-  for (const tx of txs) {
-    if (
-      args.paymentTimestamp &&
-      tx.timestamp &&
-      tx.timestamp + 5 < args.paymentTimestamp
-    ) {
-      continue;
-    }
-    const match = (tx.operations ?? []).find(
-      (op) =>
-        op.sender === TREASURY_ADDRESS &&
-        op.receiver === args.buyer &&
-        op.identifier === NOVA_TOKEN_ID &&
-        op.value === args.novaAtomic.toString(),
+  try {
+    const txs = await fetchJson<ApiTransaction[]>(
+      `${API_URL}/accounts/${TREASURY_ADDRESS}/transactions?size=40&status=success&token=${NOVA_TOKEN_ID}`,
     );
-    if (match && tx.txHash) return tx.txHash;
+    for (const tx of txs) {
+      if (
+        args.paymentTimestamp &&
+        tx.timestamp &&
+        tx.timestamp + 5 < args.paymentTimestamp
+      ) {
+        continue;
+      }
+      const match = (tx.operations ?? []).find(
+        (op) =>
+          sameAddress(op.sender, TREASURY_ADDRESS) &&
+          sameAddress(op.receiver, args.buyer) &&
+          op.identifier === NOVA_TOKEN_ID &&
+          op.value === args.novaAtomic.toString(),
+      );
+      if (match && tx.txHash) return tx.txHash;
+    }
+  } catch (err) {
+    console.warn("[NOVA] Matching NOVA transfer lookup failed", err);
   }
   return null;
 }
@@ -301,55 +316,24 @@ async function getTreasuryNovaBalanceAtomic(): Promise<bigint> {
   }
 }
 
-function createEntrypoint() {
-  return new MainnetEntrypoint({
-    url: API_URL,
-    kind: "api",
-  });
-}
-
 async function sendNovaAndReceipt(
   treasury: Account,
   buyer: string,
   novaAtomic: bigint,
   paymentTxHash: string,
 ): Promise<string> {
-  const entrypoint = createEntrypoint();
-  treasury.nonce = await entrypoint.recallAccountNonce(treasury.address);
-
-  const factory = new TransferTransactionsFactory({
-    config: new TransactionsFactoryConfig({ chainID: CHAIN_ID }),
-  });
-
-  const nova = new Token({ identifier: NOVA_TOKEN_ID });
-  const transfer = new TokenTransfer({ token: nova, amount: novaAtomic });
-  const novaTx = await factory.createTransactionForESDTTokenTransfer(
-    treasury.address,
-    {
-      receiver: Address.newFromBech32(buyer),
-      tokenTransfers: [transfer],
-    },
+  const fulfillTxHash = await sendNovaFromTreasury(
+    treasury,
+    buyer,
+    novaAtomic,
+    { confirm: true },
   );
-  novaTx.nonce = treasury.getNonceThenIncrement();
-  novaTx.signature = await treasury.signTransaction(novaTx);
-  const fulfillTxHash = await entrypoint.sendTransaction(novaTx);
 
-  // On-chain receipt for idempotency (ESDT transfer data cannot carry a custom memo).
-  try {
-    const receiptTx = await factory.createTransactionForNativeTokenTransfer(
-      treasury.address,
-      {
-        receiver: treasury.address,
-        nativeAmount: BigInt(0),
-        data: new TextEncoder().encode(`${FULFILL_PREFIX}${paymentTxHash}`),
-      },
-    );
-    receiptTx.nonce = treasury.getNonceThenIncrement();
-    receiptTx.signature = await treasury.signTransaction(receiptTx);
-    await entrypoint.sendTransaction(receiptTx);
-  } catch (err) {
-    console.warn("[NOVA] Fulfillment receipt tx failed (NOVA already sent)", err);
-  }
+  // Best-effort idempotency memo — never fail the purchase if this drops.
+  await sendTreasuryMemoReceipt(
+    treasury,
+    `${FULFILL_PREFIX}${paymentTxHash}`,
+  );
 
   return fulfillTxHash;
 }
@@ -363,8 +347,11 @@ async function fulfillNovaPurchaseUnlocked(
     throw new Error("Invalid payment transaction hash");
   }
 
+  console.info("[NOVA] Fulfill start", { hash, referralCode: referralCode ?? null });
+
   const receipt = await findReceiptTxHash(hash);
   if (receipt) {
+    console.info("[NOVA] Already fulfilled (receipt)", { hash, receipt });
     return {
       alreadyFulfilled: true,
       paymentTxHash: hash,
@@ -386,12 +373,25 @@ async function fulfillNovaPurchaseUnlocked(
     payment.decimals,
   );
 
+  console.info("[NOVA] Payment parsed", {
+    hash,
+    buyer: payment.buyer,
+    asset: payment.asset,
+    paidAtomic: payment.paidAtomic.toString(),
+    novaAtomic: novaAtomic.toString(),
+    usdcValue,
+  });
+
   const existingNova = await findMatchingNovaTransfer({
     buyer: payment.buyer,
     novaAtomic,
     paymentTimestamp: paymentTx.timestamp,
   });
   if (existingNova) {
+    console.info("[NOVA] Already fulfilled (matching transfer)", {
+      hash,
+      existingNova,
+    });
     return {
       alreadyFulfilled: true,
       paymentTxHash: hash,
@@ -415,22 +415,54 @@ async function fulfillNovaPurchaseUnlocked(
   }
 
   const treasury = loadTreasuryAccount();
-  const fulfillTxHash = await sendNovaAndReceipt(
-    treasury,
-    payment.buyer,
-    novaAtomic,
-    hash,
-  );
+  let fulfillTxHash: string;
+  try {
+    fulfillTxHash = await sendNovaAndReceipt(
+      treasury,
+      payment.buyer,
+      novaAtomic,
+      hash,
+    );
+  } catch (err) {
+    console.error("[NOVA] Buyer NOVA delivery failed", err);
+    throw err instanceof Error
+      ? err
+      : new Error("Failed to broadcast NOVA delivery transaction");
+  }
 
-  // Referral bonus is best-effort and never rolls back buyer delivery.
-  const { maybePayReferralReward } = await import("@/lib/referrals/payout");
-  const referralPayout = await maybePayReferralReward({
-    paymentTxHash: hash,
-    buyer: payment.buyer,
-    buyerNovaAtomic: novaAtomic,
-    referralCode,
-    treasury,
-  });
+  // Referral accrual must never fail the buyer's successful delivery response.
+  let referral:
+    | FulfillResult["referral"]
+    | undefined;
+  try {
+    const { maybeAccrueReferralReward } = await import(
+      "@/lib/referrals/payout"
+    );
+    const referralPayout = await maybeAccrueReferralReward({
+      paymentTxHash: hash,
+      buyer: payment.buyer,
+      buyerNovaAtomic: novaAtomic,
+      referralCode,
+    });
+    referral = {
+      code: referralPayout.code,
+      referrer: referralPayout.referrer,
+      paid: referralPayout.paid,
+      rewardTxHash: referralPayout.rewardTxHash,
+      rewardNovaAtomic: referralPayout.rewardNovaAtomic,
+      reason: referralPayout.reason,
+    };
+  } catch (err) {
+    console.warn("[NOVA] Referral accrual failed (buyer NOVA already sent)", err);
+    referral = {
+      code: referralCode ?? null,
+      referrer: null,
+      paid: false,
+      rewardTxHash: null,
+      rewardNovaAtomic: "0",
+      reason: "accrual_error",
+    };
+  }
 
   return {
     alreadyFulfilled: false,
@@ -444,14 +476,7 @@ async function fulfillNovaPurchaseUnlocked(
     usdcValue,
     novaAmountHuman: String(novaHuman),
     novaAmountAtomic: novaAtomic.toString(),
-    referral: {
-      code: referralPayout.code,
-      referrer: referralPayout.referrer,
-      paid: referralPayout.paid,
-      rewardTxHash: referralPayout.rewardTxHash,
-      rewardNovaAtomic: referralPayout.rewardNovaAtomic,
-      reason: referralPayout.reason,
-    },
+    referral,
   };
 }
 

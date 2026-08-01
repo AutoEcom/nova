@@ -245,21 +245,34 @@ export function BuyNovaModal() {
       // Server verifies the payment on-chain and sends $NOVA from the treasury.
       setStatus("delivering");
       const referralCode = getStoredReferralCode();
-      const fulfillRes = await fetch("/api/nova/fulfill", {
+      const fulfillBody = JSON.stringify({
+        paymentTxHash,
+        ...(referralCode ? { referralCode } : {}),
+      });
+
+      let fulfillRes = await fetch("/api/nova/fulfill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentTxHash,
-          ...(referralCode ? { referralCode } : {}),
-        }),
+        body: fulfillBody,
       });
-      const fulfillJson = (await fulfillRes.json()) as {
+      let fulfillJson = (await fulfillRes.json()) as {
         ok?: boolean;
         error?: string;
         fulfillTxHash?: string;
         alreadyFulfilled?: boolean;
         code?: string;
       };
+
+      // One automatic retry — payment may still be propagating on the API.
+      if (!fulfillRes.ok && fulfillJson.code !== "SIGNER_MISSING") {
+        await new Promise((r) => setTimeout(r, 4000));
+        fulfillRes = await fetch("/api/nova/fulfill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: fulfillBody,
+        });
+        fulfillJson = (await fulfillRes.json()) as typeof fulfillJson;
+      }
 
       if (!fulfillRes.ok) {
         throw new Error(

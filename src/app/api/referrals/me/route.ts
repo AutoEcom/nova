@@ -3,6 +3,7 @@ import { buildInviteUrl, getReferralTier } from "@/config/referrals";
 import {
   getReferralBalance,
   getReferralByAddress,
+  healClaimableFromAttributions,
   listLedgerForReferrer,
   registerReferralAddress,
 } from "@/lib/referrals/registry";
@@ -30,9 +31,15 @@ export async function GET(request: Request) {
     }
 
     const tier = getReferralTier(record.tier);
+    await healClaimableFromAttributions(address);
     const ledger = await listLedgerForReferrer(address, 12);
-    const paid = ledger.filter((e) => e.status === "paid");
-    const totalRewardAtomic = paid.reduce(
+    const attributed = ledger.filter(
+      (e) =>
+        e.status === "paid" ||
+        e.status === "accrued" ||
+        e.status === "claimed",
+    );
+    const totalRewardAtomic = attributed.reduce(
       (sum, e) => sum + BigInt(e.rewardNovaAtomic || "0"),
       BigInt(0),
     );
@@ -47,7 +54,7 @@ export async function GET(request: Request) {
       rewardPercent: tier.rewardPercent,
       inviteUrl: buildInviteUrl(record.code),
       stats: {
-        attributedBuys: paid.length,
+        attributedBuys: attributed.length,
         totalRewardAtomic: totalRewardAtomic.toString(),
         claimableBalance: balance?.claimableBalance ?? 0,
         totalClaimed: balance?.totalClaimed ?? 0,
