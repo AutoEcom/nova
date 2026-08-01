@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildInviteUrl, getReferralTier } from "@/config/referrals";
 import {
+  getReferralBalance,
   getReferralByAddress,
   listLedgerForReferrer,
   registerReferralAddress,
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
       (sum, e) => sum + BigInt(e.rewardNovaAtomic || "0"),
       BigInt(0),
     );
+    const balance = await getReferralBalance(address);
 
     return NextResponse.json({
       ok: true,
@@ -47,6 +49,8 @@ export async function GET(request: Request) {
       stats: {
         attributedBuys: paid.length,
         totalRewardAtomic: totalRewardAtomic.toString(),
+        claimableBalance: balance?.claimableBalance ?? 0,
+        totalClaimed: balance?.totalClaimed ?? 0,
       },
       ledger,
     });
@@ -54,6 +58,6 @@ export async function GET(request: Request) {
     console.error("[NOVA] Referral me failed", err);
     const message =
       err instanceof Error ? err.message : "Failed to load referral profile";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
