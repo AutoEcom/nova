@@ -31,6 +31,7 @@ import {
 import { formatAddress, formatTokenAmount } from "@/lib/mx/format";
 import { fetchWalletTokenBalances } from "@/lib/mx/fetchBalances";
 import { signAndSendTransactions } from "@/lib/mx/signAndSendTransactions";
+import { getStoredReferralCode } from "@/lib/referrals/attribution";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 import { useMxReady } from "@/providers/MultiversXProvider";
 import { GlowButton } from "@/components/ui/GlowButton";
@@ -243,10 +244,14 @@ export function BuyNovaModal() {
 
       // Server verifies the payment on-chain and sends $NOVA from the treasury.
       setStatus("delivering");
+      const referralCode = getStoredReferralCode();
       const fulfillRes = await fetch("/api/nova/fulfill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentTxHash }),
+        body: JSON.stringify({
+          paymentTxHash,
+          ...(referralCode ? { referralCode } : {}),
+        }),
       });
       const fulfillJson = (await fulfillRes.json()) as {
         ok?: boolean;

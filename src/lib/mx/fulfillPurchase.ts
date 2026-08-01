@@ -60,6 +60,14 @@ export type FulfillResult = {
   usdcValue: number;
   novaAmountHuman: string;
   novaAmountAtomic: string;
+  referral?: {
+    code: string | null;
+    referrer: string | null;
+    paid: boolean;
+    rewardTxHash: string | null;
+    rewardNovaAtomic: string;
+    reason?: string;
+  };
 };
 
 function sleep(ms: number) {
@@ -348,6 +356,7 @@ async function sendNovaAndReceipt(
 
 async function fulfillNovaPurchaseUnlocked(
   paymentTxHash: string,
+  referralCode?: string | null,
 ): Promise<FulfillResult> {
   const hash = paymentTxHash.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(hash)) {
@@ -413,6 +422,16 @@ async function fulfillNovaPurchaseUnlocked(
     hash,
   );
 
+  // Referral bonus is best-effort and never rolls back buyer delivery.
+  const { maybePayReferralReward } = await import("@/lib/referrals/payout");
+  const referralPayout = await maybePayReferralReward({
+    paymentTxHash: hash,
+    buyer: payment.buyer,
+    buyerNovaAtomic: novaAtomic,
+    referralCode,
+    treasury,
+  });
+
   return {
     alreadyFulfilled: false,
     paymentTxHash: hash,
@@ -425,6 +444,14 @@ async function fulfillNovaPurchaseUnlocked(
     usdcValue,
     novaAmountHuman: String(novaHuman),
     novaAmountAtomic: novaAtomic.toString(),
+    referral: {
+      code: referralPayout.code,
+      referrer: referralPayout.referrer,
+      paid: referralPayout.paid,
+      rewardTxHash: referralPayout.rewardTxHash,
+      rewardNovaAtomic: referralPayout.rewardNovaAtomic,
+      reason: referralPayout.reason,
+    },
   };
 }
 
@@ -434,14 +461,17 @@ async function fulfillNovaPurchaseUnlocked(
  */
 export async function fulfillNovaPurchase(
   paymentTxHash: string,
+  options?: { referralCode?: string | null },
 ): Promise<FulfillResult> {
   const key = paymentTxHash.trim().toLowerCase();
   const existingJob = inFlight.get(key);
   if (existingJob) return existingJob;
 
-  const job = fulfillNovaPurchaseUnlocked(key).finally(() => {
-    inFlight.delete(key);
-  });
+  const job = fulfillNovaPurchaseUnlocked(key, options?.referralCode).finally(
+    () => {
+      inFlight.delete(key);
+    },
+  );
   inFlight.set(key, job);
   return job;
 }

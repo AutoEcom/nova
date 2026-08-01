@@ -6,12 +6,12 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { ComingSoonPanel } from "@/components/dashboard/ComingSoonPanel";
 
-const BOT_SLOTS = [
+const AGENT_SLOTS = [
   {
     id: "local",
     title: "Local Agent",
     blurb:
-      "Run EVOLGO bots on your own hardware with non-custodial signing. Ideal for operators who want full key control.",
+      "Run EVOLGO agents on your own hardware with non-custodial signing. Ideal for operators who want full key control.",
     status: "in-progress" as const,
     progress: 54,
     features: ["Hardware key signing", "Offline strategy packs", "Local risk caps"],
@@ -30,9 +30,9 @@ const BOT_SLOTS = [
 export function BotsManagement() {
   return (
     <ComingSoonPanel
-      eyebrow="AI Bots"
-      title="Bot management console"
-      description="Deploy, monitor, and terminate algorithmic agents across local and cloud runtimes. Activation unlocks with the Intelligence Core release."
+      eyebrow="Agents"
+      title="Agent command console"
+      description="Deploy, monitor, and terminate autonomous agents across local and cloud runtimes. Activation unlocks with the Intelligence Core release."
       status="in-progress"
       progress={48}
       features={[
@@ -45,7 +45,7 @@ export function BotsManagement() {
       ]}
     >
       <div className="grid gap-4 md:grid-cols-2">
-        {BOT_SLOTS.map((slot, i) => (
+        {AGENT_SLOTS.map((slot, i) => (
           <GlassCard key={slot.id} delay={0.08 * i} className="!p-4">
             <div className="mb-3 flex items-start justify-between gap-2">
               <h3 className="font-display text-base font-semibold tracking-wide">

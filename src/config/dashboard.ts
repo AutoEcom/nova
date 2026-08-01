@@ -28,10 +28,10 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
   },
   {
     id: "bots",
-    label: "AI Bots",
+    label: "Agents",
     href: "/dashboard/bots",
     status: "in-progress",
-    description: "Local & cloud automation",
+    description: "Autonomous execution",
   },
   {
     id: "staking",
@@ -44,8 +44,8 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
     id: "referrals",
     label: "Referrals",
     href: "/dashboard/referrals",
-    status: "coming-soon",
-    description: "Invite & earn",
+    status: "live",
+    description: "Invite & earn $NOVA",
   },
 ] as const;
 

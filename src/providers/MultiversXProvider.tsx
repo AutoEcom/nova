@@ -11,6 +11,7 @@ import { mxInitConfig } from "@/config/mxInit";
 import { initAppSingleton } from "@/lib/mx/initAppSingleton";
 import { WalletUIProvider } from "./WalletUIProvider";
 import { BuyNovaModal } from "@/components/wallet/BuyNovaModal";
+import { ReferralCapture } from "@/components/referrals/ReferralCapture";
 import { ClientErrorBoundary } from "@/components/ClientErrorBoundary";
 
 type MxReadyState = {
@@ -67,6 +68,7 @@ export function MultiversXProvider({ children }: { children: ReactNode }) {
   return (
     <MxReadyContext.Provider value={{ ready, error }}>
       <WalletUIProvider>
+        <ReferralCapture />
         {children}
         <ClientErrorBoundary label="BuyNovaModal">
           <BuyNovaModal />

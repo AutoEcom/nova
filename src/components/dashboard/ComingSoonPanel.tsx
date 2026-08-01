@@ -17,7 +17,7 @@ type ComingSoonPanelProps = {
 };
 
 /**
- * Shared "module under construction" panel used by Bots / Staking / Referrals.
+ * Shared "module under construction" panel used by Agents / Staking modules.
  * Keeps the Coming Soon / In Progress presentation consistent across routes.
  */
 export function ComingSoonPanel({
