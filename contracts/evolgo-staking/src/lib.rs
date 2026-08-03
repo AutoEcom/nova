@@ -21,7 +21,8 @@ pub const LOCK_90_SECONDS: u64 = 90 * SECONDS_PER_DAY;
 pub const SYNDICATE_MIN_STAKE: u64 = 10_000;
 pub const TOKEN_DECIMALS: u32 = 18;
 
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, TypeAbi, Clone)]
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct StakePosition<M: ManagedTypeApi> {
     pub position_id: u64,
     pub pool_id: u8,
@@ -96,7 +97,7 @@ pub trait EvolgoStaking {
         }
 
         self.total_staked_in_pool(pool_id)
-            .update(|v| *v += payment.amount);
+            .update(|v| *v += payment.amount.clone());
     }
 
     /// Unstake a position after the lock has elapsed (Flexible = always).
@@ -104,7 +105,7 @@ pub trait EvolgoStaking {
     #[endpoint(unstake)]
     fn unstake(&self, position_id: u64) {
         let caller = self.blockchain().get_caller();
-        let mut position = self.require_owned_position(&caller, position_id);
+        let position = self.require_owned_position(&caller, position_id);
         let now = self.blockchain().get_block_timestamp();
         require!(
             now >= position.unlock_timestamp,
@@ -279,7 +280,7 @@ pub trait EvolgoStaking {
         }
         let year_seconds = BigUint::from(365u64 * SECONDS_PER_DAY);
         let numerator =
-            &position.amount * BigUint::from(apy_bps) * BigUint::from(elapsed);
+            position.amount.clone() * BigUint::from(apy_bps) * BigUint::from(elapsed);
         let denominator = BigUint::from(10_000u64) * year_seconds;
         numerator / denominator
     }

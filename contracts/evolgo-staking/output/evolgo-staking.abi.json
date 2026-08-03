@@ -1,0 +1,273 @@
+{
+    "buildInfo": {
+        "rustc": {
+            "version": "1.95.0",
+            "commitHash": "59807616e1fa2540724bfbac14d7976d7e4a3860",
+            "commitDate": "2026-04-14",
+            "channel": "Stable",
+            "short": "rustc 1.95.0 (59807616e 2026-04-14)"
+        },
+        "contractCrate": {
+            "name": "evolgo-staking",
+            "version": "0.1.0"
+        },
+        "framework": {
+            "name": "multiversx-sc",
+            "version": "0.57.1"
+        }
+    },
+    "name": "EvolgoStaking",
+    "constructor": {
+        "inputs": [
+            {
+                "name": "staking_token",
+                "type": "TokenIdentifier"
+            }
+        ],
+        "outputs": []
+    },
+    "upgradeConstructor": {
+        "inputs": [],
+        "outputs": []
+    },
+    "endpoints": [
+        {
+            "docs": [
+                "Stake $NOVA into a pool. Payment must be the configured ESDT.",
+                "`pool_id`: 0 = Flexible, 1 = 30-day Operator, 2 = 90-day Syndicate."
+            ],
+            "name": "stake",
+            "mutability": "mutable",
+            "payableInTokens": [
+                "*"
+            ],
+            "inputs": [
+                {
+                    "name": "pool_id",
+                    "type": "u8"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "docs": [
+                "Unstake a position after the lock has elapsed (Flexible = always).",
+                "Pending rewards are paid out together with the principal."
+            ],
+            "name": "unstake",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "position_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "docs": [
+                "Claim accrued rewards without closing the position."
+            ],
+            "name": "claimRewards",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "position_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "docs": [
+                "Owner tops up the reward inventory held by the contract."
+            ],
+            "name": "fundRewards",
+            "onlyOwner": true,
+            "mutability": "mutable",
+            "payableInTokens": [
+                "*"
+            ],
+            "inputs": [],
+            "outputs": []
+        },
+        {
+            "name": "getStakingToken",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "TokenIdentifier"
+                }
+            ]
+        },
+        {
+            "name": "getNextPositionId",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "getPosition",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "position_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "StakePosition"
+                }
+            ]
+        },
+        {
+            "name": "getUserPositionIds",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "user",
+                    "type": "Address"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "variadic<u64>",
+                    "multi_result": true
+                }
+            ]
+        },
+        {
+            "name": "getTotalStakedInPool",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "pool_id",
+                    "type": "u8"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
+            "name": "getSyndicateStaked",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "user",
+                    "type": "Address"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
+            "name": "isSyndicateEligible",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "user",
+                    "type": "Address"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "bool"
+                }
+            ]
+        },
+        {
+            "name": "getPendingRewards",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "position_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
+            "docs": [
+                "All open positions for a wallet (for frontend / backend sync)."
+            ],
+            "name": "getUserPositions",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "user",
+                    "type": "Address"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "variadic<StakePosition>",
+                    "multi_result": true
+                }
+            ]
+        },
+        {
+            "name": "getPoolApyBps",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "pool_id",
+                    "type": "u8"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        }
+    ],
+    "esdtAttributes": [],
+    "hasCallback": false,
+    "types": {
+        "StakePosition": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "position_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "pool_id",
+                    "type": "u8"
+                },
+                {
+                    "name": "amount",
+                    "type": "BigUint"
+                },
+                {
+                    "name": "stake_timestamp",
+                    "type": "u64"
+                },
+                {
+                    "name": "last_claim_timestamp",
+                    "type": "u64"
+                },
+                {
+                    "name": "unlock_timestamp",
+                    "type": "u64"
+                }
+            ]
+        }
+    }
+}

@@ -4,7 +4,7 @@ import { StakingProgram } from "@/components/dashboard/StakingProgram";
 export const metadata: Metadata = {
   title: "Staking | EVOLGO — Powered by $NOVA",
   description:
-    "Stake $NOVA across Flexible, Operator, and Syndicate pools. Lock capital, earn protocol yield, and unlock network authority on MultiversX.",
+    "Power the agent network. Stake $NOVA to maximize liquidity, compound returns, and unlock elite tiers for your autonomous ecosystem.",
 };
 
 export default function DashboardStakingPage() {
