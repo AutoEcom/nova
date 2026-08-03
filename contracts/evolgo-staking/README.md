@@ -18,18 +18,14 @@ On-chain staking for **$NOVA** with three pools:
 
 ## Prerequisites
 
-1. Install Rust (`rustup`) and the MultiversX WASM target toolchain.
-2. Install `sc-meta`:
+1. Install Rust via `rustup`.
+2. This contract pins **Rust 1.95.0** in `rust-toolchain.toml` (Rust 1.96+ breaks MultiversX 0.57 wasm linking).
+3. Ensure `wasm32-unknown-unknown` is available (auto-installed by the toolchain file).
 
-```bash
-cargo install multiversx-sc-meta --locked
-```
-
-Or use the contract-local meta crate (recommended):
+Build via the contract-local meta crate (recommended — no global `sc-meta` required):
 
 ```bash
 cd contracts/evolgo-staking/meta
-cargo run -- abi
 cargo run -- build
 ```
 
@@ -40,20 +36,28 @@ cd contracts/evolgo-staking/meta
 cargo run -- build
 ```
 
-Artifacts land in `contracts/evolgo-staking/output/` (`evolgo-staking.wasm`, `.abi.json`).
+Artifacts land in `contracts/evolgo-staking/output/`:
+- `evolgo-staking.wasm`
+- `evolgo-staking.mxsc.json`
+- `evolgo-staking.imports.json`
 
-## Deploy (devnet / mainnet)
+## Deploy (mainnet, mnemonic — no .pem)
+
+Uses the same treasury secrets as NOVA fulfillment (`TREASURY_MNEMONIC` or `TREASURY_WALLET_PEM` from `.env.local`). Owner of the SC = treasury wallet.
 
 ```bash
-# Example with mxpy / sc-meta deploy — replace wallet & token id
-mxpy contract deploy \
-  --bytecode=../output/evolgo-staking.wasm \
-  --pem=wallet.pem \
-  --proxy=https://gateway.multiversx.com \
-  --chain=1 \
-  --arguments str:NOVA-04c5f5 \
-  --gas-limit=60000000
+# 1) Dry-run (builds the tx, does not broadcast)
+npm run deploy:staking:dry
+
+# 2) Live deploy to MultiversX Mainnet
+npm run deploy:staking
 ```
+
+The script:
+- reads `contracts/evolgo-staking/output/evolgo-staking.wasm` + `.abi.json`
+- inits with `NOVA-04c5f5` (override via `NOVA_TOKEN_ID`)
+- deploys as **payable + upgradeable** (required for ESDT `stake`)
+- writes `contracts/evolgo-staking/output/deployed.json` with the new address
 
 After deploy, set in `.env.local` / Vercel:
 
@@ -62,6 +66,18 @@ NEXT_PUBLIC_STAKING_CONTRACT=erd1...
 ```
 
 Fund the contract with reward inventory (`fundRewards` as owner) so claims succeed.
+
+### Alternative: mxpy + .pem
+
+```bash
+mxpy contract deploy \
+  --bytecode=../output/evolgo-staking.wasm \
+  --pem=wallet.pem \
+  --proxy=https://gateway.multiversx.com \
+  --chain=1 \
+  --arguments str:NOVA-04c5f5 \
+  --gas-limit=60000000
+```
 
 ## Frontend / backend wiring
 

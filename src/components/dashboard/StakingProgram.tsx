@@ -481,8 +481,8 @@ export function StakingProgram() {
           LOCK $NOVA. COMMAND YIELD.
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-          Deploy capital across liquid and locked protocol pools. Higher lock
-          tiers compound yield and unlock network authority across EVOLGO.
+          Power the agent network. Maximize liquidity, compound returns, and
+          unlock elite tiers for your autonomous ecosystem.
         </p>
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
           {onChainMode
@@ -546,7 +546,7 @@ export function StakingProgram() {
             {!flash && !error && (
               <p className="font-mono text-[11px] text-muted">
                 {onChainMode
-                  ? "Stake / unstake / claim sign real MultiversX transactions."
+                  ? "All staking operations execute securely on-chain."
                   : "Rewards accrue live from your active positions."}
               </p>
             )}
