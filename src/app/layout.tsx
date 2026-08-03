@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Orbitron, Sora, JetBrains_Mono } from "next/font/google";
 import { MultiversXProvider } from "@/providers/MultiversXProvider";
+import { SiteChrome } from "@/components/SiteChrome";
 import "./globals.css";
 
 const orbitron = Orbitron({
@@ -87,7 +88,9 @@ export default function RootLayout({
       className={`${orbitron.variable} ${sora.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <body className="cyber-bg flex min-h-full flex-col font-sans text-foreground">
-        <MultiversXProvider>{children}</MultiversXProvider>
+        <MultiversXProvider>
+          <SiteChrome>{children}</SiteChrome>
+        </MultiversXProvider>
       </body>
     </html>
   );

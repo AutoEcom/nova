@@ -1,0 +1,18 @@
+[package]
+name = "evolgo-staking"
+version = "0.1.0"
+authors = ["Evolgo <apocaliptobg@gmail.com>"]
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies.multiversx-sc]
+version = "0.57.0"
+
+[dev-dependencies.multiversx-sc-scenario]
+version = "0.57.0"
+
+[workspace]
+members = [".", "meta"]

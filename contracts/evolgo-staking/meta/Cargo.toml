@@ -1,0 +1,12 @@
+[package]
+name = "evolgo-staking-meta"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies.evolgo-staking]
+path = ".."
+
+[dependencies.multiversx-sc-meta]
+version = "0.57.0"
+default-features = false

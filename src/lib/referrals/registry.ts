@@ -234,6 +234,35 @@ export async function getReferralByAddress(
   return data ? rowToRecord(data as CodeRow) : null;
 }
 
+/**
+ * Persist referral tier for a wallet (e.g. Syndicate unlock from 90D stake).
+ * Ensures a referral_codes row exists before updating.
+ */
+export async function setReferralTier(
+  addressRaw: string,
+  tier: ReferralTierId,
+): Promise<ReferralRecord> {
+  const address = addressRaw.trim();
+  if (!isBech32Address(address)) {
+    throw new Error("Invalid MultiversX address");
+  }
+  const existing = await getReferralByAddress(address);
+  const record = existing ?? (await registerReferralAddress(address));
+  if (record.tier === tier) return record;
+
+  const { data, error } = await db()
+    .from("referral_codes")
+    .update({ tier: tierLabelForDb(tier) })
+    .eq("wallet_address", record.address.toLowerCase())
+    .select("wallet_address, code, tier, created_at")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to update referral tier");
+  }
+  return rowToRecord(data as CodeRow);
+}
+
 export async function findLedgerByPayment(
   paymentTxHash: string,
 ): Promise<ReferralLedgerEntry | null> {

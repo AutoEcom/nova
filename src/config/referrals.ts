@@ -20,8 +20,9 @@ export const REFERRAL_STORAGE_KEY = "evolgo_ref";
 export const REFERRAL_COOKIE_NAME = "evolgo_ref";
 
 /**
- * Scalable tier ladder. Only Operator is active today; Commander / Syndicate
- * multipliers are reserved for future unlocks without reshaping the UI schema.
+ * Scalable tier ladder.
+ * Syndicate is unlocked automatically when a wallet holds ≥10,000 $NOVA in the
+ * on-chain 90-day Syndicate staking pool (see `/api/staking/syndicate`).
  */
 export type ReferralTierId = "operator" | "commander" | "syndicate";
 
@@ -60,8 +61,8 @@ export const REFERRAL_TIERS: readonly ReferralTier[] = [
     label: "Syndicate",
     rewardPercent: 12.5,
     rewardBps: 1250,
-    blurb: "Maximum protocol share for elite network captains.",
-    active: false,
+    blurb: "Unlocked by 90-day Syndicate stake (≥10,000 $NOVA).",
+    active: true,
   },
 ] as const;
 

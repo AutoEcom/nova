@@ -2,31 +2,32 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlowButton } from "./ui/GlowButton";
 import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
 import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
+import { SITE_NAV_LINKS } from "@/config/siteNav";
 
-const links = [
-  { href: "/#tokenomics", label: "Token" },
-  { href: "/#roadmap", label: "Roadmap" },
-  { href: "/#ecosystem", label: "Ecosystem" },
-  { href: "/#community", label: "Community" },
-];
+function linkIsActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const { openBuyModal } = useWalletUI();
+  const pathname = usePathname() ?? "";
 
   const closeMenu = () => setOpen(false);
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[55]">
-      <div className="pointer-events-auto glass-strong mx-3 mt-3 rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.45)] sm:mx-4 md:mx-auto md:max-w-6xl">
+      <div className="pointer-events-auto glass-strong mx-3 mt-3 rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.45)] sm:mx-4 md:mx-auto md:max-w-7xl">
         <nav className="flex items-center justify-between px-4 py-3 sm:px-5">
           <Link
-            href="/#hero"
+            href="/"
             className="group flex items-center gap-2"
             onClick={closeMenu}
             suppressHydrationWarning
@@ -41,15 +42,21 @@ export function Navbar() {
 
           {/* Desktop / tablet */}
           <div className="nav-desktop items-center gap-5 lg:gap-6">
-            {links.map((link) => (
+            {SITE_NAV_LINKS.map((link) => {
+              const active = linkIsActive(pathname, link.href);
+              return (
               <Link
                 key={link.href}
                 href={link.href}
-                className="font-mono text-xs uppercase tracking-wider text-muted transition-colors hover:text-cyan"
+                aria-current={active ? "page" : undefined}
+                className={`font-mono text-xs uppercase tracking-wider transition-colors hover:text-cyan ${
+                  active ? "text-cyan" : "text-muted"
+                }`}
               >
                 {link.label}
               </Link>
-            ))}
+            );
+            })}
             <DashboardEntry compact />
             <GlowButton
               variant="cyan"
@@ -98,16 +105,22 @@ export function Navbar() {
               className="overflow-hidden border-t border-cyan/15 md:hidden"
             >
               <div className="flex flex-col gap-1 px-4 py-4">
-                {links.map((link) => (
+                {SITE_NAV_LINKS.map((link) => {
+                  const active = linkIsActive(pathname, link.href);
+                  return (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={closeMenu}
-                    className="rounded-xl px-3 py-3 font-mono text-sm uppercase tracking-wider text-muted transition-colors hover:bg-white/5 hover:text-cyan"
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded-xl px-3 py-3 font-mono text-sm uppercase tracking-wider transition-colors hover:bg-white/5 hover:text-cyan ${
+                      active ? "bg-cyan/10 text-cyan" : "text-muted"
+                    }`}
                   >
                     {link.label}
                   </Link>
-                ))}
+                );
+                })}
                 <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
                   <DashboardEntry onNavigate={closeMenu} />
                   <GlowButton

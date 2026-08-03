@@ -6,7 +6,7 @@ import { ClientErrorBoundary } from "@/components/ClientErrorBoundary";
 export const metadata: Metadata = {
   title: "Dashboard | EVOLGO — Powered by $NOVA",
   description:
-    "EVOLGO operator console — portfolio overview, AI trading performance, agents, staking, and referrals powered by $NOVA on MultiversX.",
+    "EVOLGO operator console — portfolio overview, agents, staking pools, and referrals powered by $NOVA on MultiversX.",
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
