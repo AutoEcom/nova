@@ -34,7 +34,7 @@ export function DashboardIcon({
           <rect x="3" y="16" width="7" height="5" rx="1.5" />
         </svg>
       );
-    case "bots":
+    case "agents":
       return (
         <svg {...common}>
           <rect x="4" y="8" width="16" height="11" rx="2.5" />

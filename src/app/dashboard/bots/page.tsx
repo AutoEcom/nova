@@ -1,12 +1,6 @@
-import type { Metadata } from "next";
-import { BotsManagement } from "@/components/dashboard/BotsManagement";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Agents | EVOLGO Dashboard",
-  description:
-    "Manage local and cloud EVOLGO autonomous agents powered by $NOVA on MultiversX. Activation shipping with the Intelligence Core.",
-};
-
-export default function DashboardBotsPage() {
-  return <BotsManagement />;
+/** Legacy path — Agents live at /dashboard/agents. */
+export default function DashboardBotsRedirectPage() {
+  redirect("/dashboard/agents");
 }

@@ -7,7 +7,7 @@
 
 export type DashboardStatus = "live" | "in-progress" | "coming-soon";
 
-export type DashboardSection = "overview" | "bots" | "staking" | "referrals";
+export type DashboardSection = "overview" | "agents" | "staking" | "referrals";
 
 export type DashboardNavItem = {
   id: DashboardSection;
@@ -27,9 +27,9 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
     description: "Portfolio & AI performance",
   },
   {
-    id: "bots",
+    id: "agents",
     label: "Agents",
-    href: "/dashboard/bots",
+    href: "/dashboard/agents",
     status: "in-progress",
     description: "Autonomous execution",
   },
@@ -37,8 +37,8 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
     id: "staking",
     label: "Staking",
     href: "/dashboard/staking",
-    status: "coming-soon",
-    description: "Pools & rewards",
+    status: "live",
+    description: "Pools & protocol yield",
   },
   {
     id: "referrals",

@@ -4,6 +4,7 @@ import { EnvironmentsEnum } from "@multiversx/sdk-dapp/out/types/enums.types";
 export const CHAIN_ID = "1";
 export const ENVIRONMENT = EnvironmentsEnum.mainnet;
 export const API_URL = "https://api.multiversx.com";
+export const GATEWAY_URL = "https://gateway.multiversx.com";
 export const EXPLORER_URL = "https://explorer.multiversx.com";
 
 /**
@@ -57,3 +58,10 @@ export const TREASURY_ADDRESS =
 
 export const isTreasuryConfigured = () =>
   Boolean(process.env.NEXT_PUBLIC_TREASURY_ADDRESS);
+
+/**
+ * Evolgo on-chain staking contract (bech32).
+ * Prefer importing from `@/config/staking` — re-exported here for env docs.
+ */
+export const STAKING_CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_STAKING_CONTRACT?.trim() ?? "";

@@ -7,12 +7,15 @@ import {
   listLedgerForReferrer,
   registerReferralAddress,
 } from "@/lib/referrals/registry";
+import { isStakingContractConfigured } from "@/config/staking";
+import { syncSyndicateReferralTier } from "@/lib/staking/syncSyndicateTier";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/referrals/me?address=erd1...
  * Ensures a code exists for the wallet and returns invite + recent ledger.
+ * When the staking SC is configured, syncs Syndicate referral tier from on-chain stake.
  */
 export async function GET(request: Request) {
   try {
@@ -28,6 +31,15 @@ export async function GET(request: Request) {
     let record = await getReferralByAddress(address);
     if (!record) {
       record = await registerReferralAddress(address);
+    }
+
+    if (isStakingContractConfigured()) {
+      try {
+        const sync = await syncSyndicateReferralTier(address);
+        if (sync.record) record = sync.record;
+      } catch (err) {
+        console.warn("[NOVA] Syndicate tier sync skipped", err);
+      }
     }
 
     const tier = getReferralTier(record.tier);
