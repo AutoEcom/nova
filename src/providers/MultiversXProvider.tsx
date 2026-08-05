@@ -11,6 +11,7 @@ import { mxInitConfig } from "@/config/mxInit";
 import { initAppSingleton } from "@/lib/mx/initAppSingleton";
 import { WalletUIProvider } from "./WalletUIProvider";
 import { BuyNovaModal } from "@/components/wallet/BuyNovaModal";
+import { BillingPanel } from "@/components/billing/BillingPanel";
 import { ReferralCapture } from "@/components/referrals/ReferralCapture";
 import { ClientErrorBoundary } from "@/components/ClientErrorBoundary";
 
@@ -72,6 +73,9 @@ export function MultiversXProvider({ children }: { children: ReactNode }) {
         {children}
         <ClientErrorBoundary label="BuyNovaModal">
           <BuyNovaModal />
+        </ClientErrorBoundary>
+        <ClientErrorBoundary label="BillingPanel">
+          <BillingPanel />
         </ClientErrorBoundary>
         {error && (
           <div className="fixed bottom-24 left-3 right-3 z-[45] rounded-xl border border-magenta/40 bg-void/90 px-4 py-2 text-center font-mono text-[11px] text-magenta backdrop-blur sm:bottom-4 sm:left-auto sm:right-4 sm:max-w-md">

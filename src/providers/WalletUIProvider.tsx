@@ -25,6 +25,9 @@ type WalletUIContextValue = {
   isBuyOpen: boolean;
   openBuyModal: () => void;
   closeBuyModal: () => void;
+  isBillingOpen: boolean;
+  openBillingModal: () => void;
+  closeBillingModal: () => void;
   openConnect: (options?: OpenConnectOptions) => void;
 };
 
@@ -73,6 +76,7 @@ function openXPortalDeepLink() {
 
 export function WalletUIProvider({ children }: { children: ReactNode }) {
   const [isBuyOpen, setIsBuyOpen] = useState(false);
+  const [isBillingOpen, setIsBillingOpen] = useState(false);
   const openBuyAfterLoginRef = useRef(false);
   const { ready } = useMxReady();
 
@@ -134,9 +138,10 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
 
   const openConnect = useCallback(
     (options?: OpenConnectOptions) => {
-      // Always dismiss Buy first — the MultiversX unlock panel shares the same
-      // overlay stack and would otherwise render underneath the purchase dialog.
+      // Always dismiss Buy / Billing first — the MultiversX unlock panel shares
+      // the same overlay stack and would otherwise render underneath.
       setIsBuyOpen(false);
+      setIsBillingOpen(false);
       openBuyAfterLoginRef.current = Boolean(options?.resumeBuy);
       openUnlockPanel();
     },
@@ -147,19 +152,38 @@ export function WalletUIProvider({ children }: { children: ReactNode }) {
     // Open the calculator immediately (even when not connected). The modal's
     // pay action handles connecting the wallet when the user commits, so
     // pricing is always visible up-front.
+    setIsBillingOpen(false);
     setIsBuyOpen(true);
   }, []);
 
   const closeBuyModal = useCallback(() => setIsBuyOpen(false), []);
+
+  const openBillingModal = useCallback(() => {
+    setIsBuyOpen(false);
+    setIsBillingOpen(true);
+  }, []);
+
+  const closeBillingModal = useCallback(() => setIsBillingOpen(false), []);
 
   const value = useMemo(
     () => ({
       isBuyOpen,
       openBuyModal,
       closeBuyModal,
+      isBillingOpen,
+      openBillingModal,
+      closeBillingModal,
       openConnect,
     }),
-    [isBuyOpen, openBuyModal, closeBuyModal, openConnect],
+    [
+      isBuyOpen,
+      openBuyModal,
+      closeBuyModal,
+      isBillingOpen,
+      openBillingModal,
+      closeBillingModal,
+      openConnect,
+    ],
   );
 
   return (

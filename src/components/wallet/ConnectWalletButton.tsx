@@ -76,7 +76,7 @@ function ConnectWalletButtonReady({
 }: ConnectWalletButtonProps) {
   const isLoggedIn = useGetIsLoggedIn();
   const account = useGetAccount();
-  const { openConnect } = useWalletUI();
+  const { openConnect, openBillingModal } = useWalletUI();
 
   const handleLogout = useCallback(async () => {
     try {
@@ -92,14 +92,22 @@ function ConnectWalletButtonReady({
       <div
         className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-cyan/25 bg-cyan/10 px-2 py-1 md:gap-2 md:px-2.5 md:py-1.5 ${fullWidth ? "w-full justify-between" : ""} ${className}`}
       >
+        <button
+          type="button"
+          onClick={openBillingModal}
+          className="max-w-[7.5rem] truncate font-mono text-[10px] tracking-wide text-cyan touch-manipulation hover:text-foreground md:max-w-none md:text-[11px]"
+          title={`${account.address} · Billing`}
+        >
+          {formatAddress(account.address, 4)}
+        </button>
         <a
           href={`${EXPLORER_URL}/accounts/${account.address}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="max-w-[7.5rem] truncate font-mono text-[10px] tracking-wide text-cyan touch-manipulation md:max-w-none md:text-[11px]"
-          title={account.address}
+          aria-label="Open explorer"
+          className="hidden shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted hover:text-cyan md:inline"
         >
-          {formatAddress(account.address, 4)}
+          Explorer
         </a>
         <button
           type="button"

@@ -30,8 +30,8 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
     id: "agents",
     label: "Agents",
     href: "/dashboard/agents",
-    status: "in-progress",
-    description: "Autonomous execution",
+    status: "live",
+    description: "Marketplace & terminals",
   },
   {
     id: "staking",

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "deploy:staking": "node scripts/deploy-staking.mjs",
-    "deploy:staking:dry": "node scripts/deploy-staking.mjs --dry-run"
+    "deploy:staking:dry": "node scripts/deploy-staking.mjs --dry-run",
+    "fund:staking": "node scripts/fund-staking-rewards.mjs",
+    "fund:staking:dry": "node scripts/fund-staking-rewards.mjs --dry-run"
   },
   "dependencies": {
     "@multiversx/sdk-core": "^15.4.1",

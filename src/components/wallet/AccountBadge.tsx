@@ -8,6 +8,7 @@ import { DECIMALS, DIGITS } from "@multiversx/sdk-dapp-utils/out/constants";
 import { EXPLORER_URL, NOVA_TOKEN_ID } from "@/config/network";
 import { formatAddress, formatTokenAmount } from "@/lib/mx/format";
 import { fetchWalletTokenBalances } from "@/lib/mx/fetchBalances";
+import { useWalletUI } from "@/providers/WalletUIProvider";
 
 type AccountBadgeProps = {
   onDisconnect: () => void;
@@ -16,6 +17,7 @@ type AccountBadgeProps = {
 
 export function AccountBadge({ onDisconnect, className = "" }: AccountBadgeProps) {
   const account = useGetAccount();
+  const { openBillingModal } = useWalletUI();
   const {
     network: { egldLabel },
   } = useGetNetworkConfig();
@@ -72,6 +74,13 @@ export function AccountBadge({ onDisconnect, className = "" }: AccountBadgeProps
           {novaBalance} {NOVA_TOKEN_ID.split("-")[0]}
         </p>
       </a>
+      <button
+        type="button"
+        onClick={openBillingModal}
+        className="shrink-0 rounded-lg border border-cyan/25 bg-cyan/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/20 touch-manipulation"
+      >
+        Billing
+      </button>
       <button
         type="button"
         onClick={onDisconnect}

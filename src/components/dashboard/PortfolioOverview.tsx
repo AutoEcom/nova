@@ -81,7 +81,7 @@ function PortfolioReady() {
   const {
     network: { egldLabel },
   } = useGetNetworkConfig();
-  const { openConnect, openBuyModal } = useWalletUI();
+  const { openConnect, openBuyModal, openBillingModal } = useWalletUI();
   const [balances, setBalances] = useState<PortfolioState>({
     nova: "0",
     usdc: "0",
@@ -159,7 +159,14 @@ function PortfolioReady() {
               {formatAddress(account.address, 6)}
             </a>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <GlowButton
+              variant="ghost"
+              className="!px-4 !py-2.5 !text-xs"
+              onClick={openBillingModal}
+            >
+              Billing
+            </GlowButton>
             <GlowButton
               variant="cyan"
               className="!px-4 !py-2.5 !text-xs"

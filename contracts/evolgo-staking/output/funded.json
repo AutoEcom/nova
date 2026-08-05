@@ -1,0 +1,9 @@
+{
+  "network": "mainnet",
+  "contractAddress": "erd1qqqqqqqqqqqqqpgqclyg7jfc7vs3cf2dv48n5xl4flcl5lmetypqpc44ug",
+  "tokenId": "NOVA-04c5f5",
+  "amountNova": "100000",
+  "amountAtomic": "100000000000000000000000",
+  "txHash": "c435b116b929b6d57dd4f0a48595c46b784e583d1c39891ff6c261e859e3dc6f",
+  "fundedAt": "2026-08-03T23:28:08.800Z"
+}

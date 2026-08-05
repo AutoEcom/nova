@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { BotsManagement } from "@/components/dashboard/BotsManagement";
+import { AgentsMarketplace } from "@/components/agents/AgentsMarketplace";
 
 export const metadata: Metadata = {
-  title: "Agents | EVOLGO Dashboard",
+  title: "Agents | EVOLGO — Powered by $NOVA",
   description:
-    "Manage local and cloud EVOLGO autonomous agents powered by $NOVA on MultiversX. Activation shipping with the Intelligence Core.",
+    "Autonomous Trading Intelligence — deploy institutional-grade Evolgo agents with live execution telemetry and performance streams.",
 };
 
 export default function DashboardAgentsPage() {
-  return <BotsManagement />;
+  return <AgentsMarketplace />;
 }
