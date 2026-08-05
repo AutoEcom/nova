@@ -17,7 +17,7 @@ function linkIsActive(pathname: string, href: string): boolean {
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const { openBuyModal } = useWalletUI();
+  const { openBuyModal, openBillingModal } = useWalletUI();
   const pathname = usePathname() ?? "";
 
   const closeMenu = () => setOpen(false);
@@ -58,6 +58,13 @@ export function Navbar() {
             );
             })}
             <DashboardEntry compact />
+            <GlowButton
+              variant="ghost"
+              className="!px-4 !py-2.5 !text-xs"
+              onClick={openBillingModal}
+            >
+              Billing
+            </GlowButton>
             <GlowButton
               variant="cyan"
               className="!px-4 !py-2.5 !text-xs"
@@ -123,6 +130,16 @@ export function Navbar() {
                 })}
                 <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
                   <DashboardEntry onNavigate={closeMenu} />
+                  <GlowButton
+                    variant="ghost"
+                    fullWidth
+                    onClick={() => {
+                      closeMenu();
+                      openBillingModal();
+                    }}
+                  >
+                    Billing & Subscriptions
+                  </GlowButton>
                   <GlowButton
                     variant="cyan"
                     fullWidth
