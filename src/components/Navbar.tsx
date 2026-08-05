@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GlowButton } from "./ui/GlowButton";
 import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
 import { DashboardEntry } from "./dashboard/DashboardEntry";
+import { BillingEntry } from "./billing/BillingEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 import { SITE_NAV_LINKS } from "@/config/siteNav";
 
@@ -17,7 +18,7 @@ function linkIsActive(pathname: string, href: string): boolean {
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const { openBuyModal, openBillingModal } = useWalletUI();
+  const { openBuyModal } = useWalletUI();
   const pathname = usePathname() ?? "";
 
   const closeMenu = () => setOpen(false);
@@ -58,13 +59,7 @@ export function Navbar() {
             );
             })}
             <DashboardEntry compact />
-            <GlowButton
-              variant="ghost"
-              className="!px-4 !py-2.5 !text-xs"
-              onClick={openBillingModal}
-            >
-              Billing
-            </GlowButton>
+            <BillingEntry compact />
             <GlowButton
               variant="cyan"
               className="!px-4 !py-2.5 !text-xs"
@@ -130,16 +125,7 @@ export function Navbar() {
                 })}
                 <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
                   <DashboardEntry onNavigate={closeMenu} />
-                  <GlowButton
-                    variant="ghost"
-                    fullWidth
-                    onClick={() => {
-                      closeMenu();
-                      openBillingModal();
-                    }}
-                  >
-                    Billing & Subscriptions
-                  </GlowButton>
+                  <BillingEntry onNavigate={closeMenu} />
                   <GlowButton
                     variant="cyan"
                     fullWidth
