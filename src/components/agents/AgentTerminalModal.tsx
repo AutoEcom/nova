@@ -6,6 +6,11 @@ import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeApiModal } from "@/components/agents/ExchangeApiModal";
 import type { AgentDefinition } from "@/config/agents";
 import {
+  DEFAULT_STRATEGY_ID,
+  STRATEGY_CATALOG,
+  getStrategyById,
+} from "@/config/strategies";
+import {
   fetchTerminalMetrics,
   postAgentBacktest,
   postAgentStart,
@@ -108,6 +113,7 @@ export function AgentTerminalModal({
   onClose,
 }: AgentTerminalModalProps) {
   const [period, setPeriod] = useState<ChartPeriod>("30D");
+  const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY_ID);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
@@ -119,6 +125,8 @@ export function AgentTerminalModal({
   } | null>(null);
   const pollFailRef = useRef(0);
   const logIdRef = useRef(0);
+
+  const selectedStrategy = getStrategyById(strategyId);
 
   const pushLog = useCallback((kind: LogKind, message: string) => {
     logIdRef.current += 1;
@@ -160,6 +168,7 @@ export function AgentTerminalModal({
   useEffect(() => {
     if (!open || !agent) return;
     setPeriod("30D");
+    setStrategyId(DEFAULT_STRATEGY_ID);
     setMetrics(null);
     pollFailRef.current = 0;
     setLogs([
@@ -173,7 +182,7 @@ export function AgentTerminalModal({
         id: "boot-2",
         time: nowTime(),
         kind: "telemetry",
-        message: "METRICS STREAM · polling /api/v1/terminal/metrics · 5s",
+        message: `METRICS STREAM · strategy ${DEFAULT_STRATEGY_ID} · poll 5s`,
       },
       {
         id: "boot-3",
@@ -199,7 +208,11 @@ export function AgentTerminalModal({
     const controller = new AbortController();
 
     const poll = async () => {
-      const next = await fetchTerminalMetrics(agent.id, controller.signal);
+      const next = await fetchTerminalMetrics(
+        agent.id,
+        strategyId,
+        controller.signal,
+      );
       if (cancelled) return;
       if (next) {
         pollFailRef.current = 0;
@@ -225,7 +238,7 @@ export function AgentTerminalModal({
       controller.abort();
       window.clearInterval(id);
     };
-  }, [open, agent, applyMetrics, pushLog]);
+  }, [open, agent, strategyId, applyMetrics, pushLog]);
 
   const runStatus: TerminalStatus = metrics?.status ?? "stopped";
   const livePnl = metrics?.cumulative_pnl_pct ?? 0;
@@ -251,9 +264,12 @@ export function AgentTerminalModal({
     if (!agent || actionBusy) return;
     setActionBusy("start");
     try {
-      const next = await postAgentStart(agent.id);
+      const next = await postAgentStart(agent.id, strategyId);
       applyMetrics(next);
-      pushLog("exec", "AGENT START · execution loop armed · venues hot");
+      pushLog(
+        "exec",
+        `AGENT START · ${selectedStrategy?.name ?? strategyId} · venues hot`,
+      );
       setToast({ tone: "ok", text: "Agent started" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Start failed";
@@ -268,9 +284,12 @@ export function AgentTerminalModal({
     if (!agent || actionBusy) return;
     setActionBusy("stop");
     try {
-      const next = await postAgentStop(agent.id);
+      const next = await postAgentStop(agent.id, strategyId);
       applyMetrics(next);
-      pushLog("system", "AGENT STOP · execution halted · inventory held");
+      pushLog(
+        "system",
+        `AGENT STOP · ${selectedStrategy?.name ?? strategyId} · inventory held`,
+      );
       setToast({ tone: "ok", text: "Agent stopped" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Stop failed";
@@ -286,10 +305,14 @@ export function AgentTerminalModal({
     setBacktestBusy(true);
     pushLog(
       "telemetry",
-      `BACKTEST QUEUED · window ${period} · simulating strategy…`,
+      `BACKTEST QUEUED · ${selectedStrategy?.name ?? strategyId} · window ${period}`,
     );
     try {
-      const { result } = await postAgentBacktest(agent.id, period);
+      const { result } = await postAgentBacktest(
+        agent.id,
+        strategyId,
+        period,
+      );
       pushLog(
         "exec",
         `BACKTEST OK · ${result.trades} trades · win ${result.win_rate_pct}% · PnL ${result.pnl_pct >= 0 ? "+" : ""}${result.pnl_pct}% · DD ${result.max_drawdown_pct}% · Sharpe ${result.sharpe}`,
@@ -305,6 +328,17 @@ export function AgentTerminalModal({
     } finally {
       setBacktestBusy(false);
     }
+  };
+
+  const handleStrategyChange = (nextId: string) => {
+    if (nextId === strategyId) return;
+    setStrategyId(nextId);
+    setMetrics(null);
+    const next = getStrategyById(nextId);
+    pushLog(
+      "system",
+      `STRATEGY SWITCH · ${next?.name ?? nextId} · reloading isolated telemetry`,
+    );
   };
 
   if (!agent) return null;
@@ -387,14 +421,42 @@ export function AgentTerminalModal({
 
               {/* Actions strip */}
               <div className="shrink-0 border-b border-white/10 bg-black/30 px-4 py-2.5 sm:px-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
-                      Actions
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted">
-                      Control agent execution · stub runtime
-                    </p>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+                    <div className="min-w-[220px] flex-1 sm:max-w-sm">
+                      <label
+                        htmlFor="strategy-selector"
+                        className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted"
+                      >
+                        Strategy Selector
+                      </label>
+                      <select
+                        id="strategy-selector"
+                        value={strategyId}
+                        onChange={(e) => handleStrategyChange(e.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-cyan/25 bg-void/80 px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/50"
+                      >
+                        {STRATEGY_CATALOG.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                            {s.status === "beta" ? " · beta" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedStrategy && (
+                        <p className="mt-1 truncate font-mono text-[9px] text-muted">
+                          {selectedStrategy.blurb}
+                        </p>
+                      )}
+                    </div>
+                    <div className="pb-0.5">
+                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                        Actions
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-muted">
+                        Isolated runtime · stub
+                      </p>
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <AgentRunToggle
@@ -439,7 +501,8 @@ export function AgentTerminalModal({
                           {pnlDisplay}
                         </p>
                         <p className="mt-0.5 font-mono text-[10px] text-muted">
-                          Live feed · {period} chart context · {agent.tagline}
+                          Live feed · {selectedStrategy?.name ?? strategyId} ·{" "}
+                          {period} · {agent.tagline}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">

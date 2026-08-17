@@ -1,5 +1,7 @@
 /** Client helpers for Evolgo terminal /api/v1 stubs. */
 
+import { DEFAULT_STRATEGY_ID } from "@/config/strategies";
+
 export type TerminalStatus = "live" | "stopped";
 
 export type TerminalPosition = {
@@ -15,6 +17,8 @@ export type TerminalPosition = {
 export type TerminalMetrics = {
   ok: boolean;
   agentId: string;
+  strategy?: string;
+  strategy_id?: string;
   status: TerminalStatus;
   cumulative_pnl_pct: number;
   active_positions: TerminalPosition[];
@@ -27,6 +31,7 @@ export type TerminalMetrics = {
 
 export type BacktestResult = {
   window: string;
+  strategy_id?: string;
   trades: number;
   win_rate_pct: number;
   pnl_pct: number;
@@ -41,13 +46,18 @@ async function parseJson<T>(res: Response): Promise<T> {
 
 export async function fetchTerminalMetrics(
   agentId: string,
+  strategy: string = DEFAULT_STRATEGY_ID,
   signal?: AbortSignal,
 ): Promise<TerminalMetrics | null> {
   try {
-    const res = await fetch(
-      `/api/v1/terminal/metrics?agentId=${encodeURIComponent(agentId)}`,
-      { cache: "no-store", signal },
-    );
+    const qs = new URLSearchParams({
+      agentId,
+      strategy,
+    });
+    const res = await fetch(`/api/v1/terminal/metrics?${qs.toString()}`, {
+      cache: "no-store",
+      signal,
+    });
     const json = await parseJson<TerminalMetrics & { error?: string }>(res);
     if (!res.ok || !json.ok) return null;
     return json;
@@ -58,11 +68,12 @@ export async function fetchTerminalMetrics(
 
 export async function postAgentStart(
   agentId: string,
+  strategy: string = DEFAULT_STRATEGY_ID,
 ): Promise<TerminalMetrics & { message?: string }> {
   const res = await fetch("/api/v1/agent/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId }),
+    body: JSON.stringify({ agentId, strategy }),
   });
   const json = await parseJson<
     TerminalMetrics & { message?: string; error?: string }
@@ -75,11 +86,12 @@ export async function postAgentStart(
 
 export async function postAgentStop(
   agentId: string,
+  strategy: string = DEFAULT_STRATEGY_ID,
 ): Promise<TerminalMetrics & { message?: string }> {
   const res = await fetch("/api/v1/agent/stop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId }),
+    body: JSON.stringify({ agentId, strategy }),
   });
   const json = await parseJson<
     TerminalMetrics & { message?: string; error?: string }
@@ -92,12 +104,13 @@ export async function postAgentStop(
 
 export async function postAgentBacktest(
   agentId: string,
+  strategy: string = DEFAULT_STRATEGY_ID,
   window = "30D",
 ): Promise<{ ok: true; result: BacktestResult; message?: string }> {
   const res = await fetch("/api/v1/agent/backtest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, window }),
+    body: JSON.stringify({ agentId, strategy, window }),
   });
   const json = await parseJson<{
     ok?: boolean;

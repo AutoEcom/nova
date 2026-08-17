@@ -1,9 +1,14 @@
 /**
- * In-memory agent runtime for /api/v1 stubs (dev / sandbox).
- * Shared across route handlers in the same Node process.
+ * In-memory agent+strategy runtime for /api/v1 stubs (dev / sandbox).
+ * Isolation key: `${agentId}::${strategyId}` so switching strategies is independent.
  */
 
 import { getAgentById } from "@/config/agents";
+import {
+  getStrategyById,
+  resolveStrategyId,
+  type StrategyDefinition,
+} from "@/config/strategies";
 
 export type AgentRunStatus = "live" | "stopped";
 
@@ -19,6 +24,7 @@ export type ActivePosition = {
 
 export type AgentRuntimeState = {
   agentId: string;
+  strategyId: string;
   status: AgentRunStatus;
   cumulativePnlPct: number;
   activePositions: ActivePosition[];
@@ -28,88 +34,81 @@ export type AgentRuntimeState = {
   updatedAt: string;
 };
 
-const DEFAULT_POSITIONS: ActivePosition[] = [
-  {
-    id: "p1",
-    pair: "EGLD/USDC",
-    side: "Long",
-    entry: "18.42",
-    size: "1.250",
-    pnl_pct: 2.84,
-    status: "Open",
-  },
-  {
-    id: "p2",
-    pair: "NOVA/USDC",
-    side: "Long",
-    entry: "0.0102",
-    size: "48,500",
-    pnl_pct: 1.36,
-    status: "Open",
-  },
-  {
-    id: "p3",
-    pair: "USDC/WEGLD",
-    side: "Short",
-    entry: "0.0541",
-    size: "920",
-    pnl_pct: -0.42,
-    status: "Partial",
-  },
-];
-
 const g = globalThis as typeof globalThis & {
-  __evolgoAgentRuntime?: Map<string, AgentRuntimeState>;
+  __evolgoAgentRuntimeV2?: Map<string, AgentRuntimeState>;
 };
 
 function store(): Map<string, AgentRuntimeState> {
-  if (!g.__evolgoAgentRuntime) {
-    g.__evolgoAgentRuntime = new Map();
+  if (!g.__evolgoAgentRuntimeV2) {
+    g.__evolgoAgentRuntimeV2 = new Map();
   }
-  return g.__evolgoAgentRuntime;
+  return g.__evolgoAgentRuntimeV2;
 }
 
-function seedState(agentId: string): AgentRuntimeState {
-  const catalog = getAgentById(agentId);
+export function runtimeKey(agentId: string, strategyId: string): string {
+  return `${agentId}::${resolveStrategyId(strategyId)}`;
+}
+
+function strategyOrThrow(strategyId: string): StrategyDefinition {
+  const s = getStrategyById(resolveStrategyId(strategyId));
+  if (!s) throw new Error("Unknown strategy");
+  return s;
+}
+
+function seedState(agentId: string, strategyId: string): AgentRuntimeState {
+  const strategy = strategyOrThrow(strategyId);
   return {
     agentId,
+    strategyId: strategy.id,
     status: "stopped",
-    cumulativePnlPct: catalog?.pnlPercent
-      ? Number((catalog.pnlPercent * 0.18).toFixed(2))
-      : 8.4,
+    cumulativePnlPct: strategy.telemetry.basePnl,
     activePositions: [],
-    latencyMs: 38,
+    latencyMs: 34 + strategy.telemetry.latencyBias,
     execSpeed: 0,
     tick: 0,
     updatedAt: new Date().toISOString(),
   };
 }
 
-export function getOrCreateRuntime(agentId: string): AgentRuntimeState {
+export function getOrCreateRuntime(
+  agentId: string,
+  strategyId: string,
+): AgentRuntimeState {
+  const sid = resolveStrategyId(strategyId);
+  const key = runtimeKey(agentId, sid);
   const map = store();
-  let state = map.get(agentId);
+  let state = map.get(key);
   if (!state) {
-    state = seedState(agentId);
-    map.set(agentId, state);
+    state = seedState(agentId, sid);
+    map.set(key, state);
   }
   return state;
 }
 
-/** Advance live telemetry slightly on each metrics poll. */
-export function tickRuntime(agentId: string): AgentRuntimeState {
-  const state = getOrCreateRuntime(agentId);
+/** Advance live telemetry slightly on each metrics poll (strategy-isolated). */
+export function tickRuntime(
+  agentId: string,
+  strategyId: string,
+): AgentRuntimeState {
+  const strategy = strategyOrThrow(strategyId);
+  const state = getOrCreateRuntime(agentId, strategy.id);
   state.tick += 1;
-  state.latencyMs = 28 + Math.floor(Math.random() * 36);
+  state.latencyMs =
+    26 +
+    strategy.telemetry.latencyBias +
+    Math.floor(Math.random() * 34);
   state.updatedAt = new Date().toISOString();
 
+  const vol = strategy.telemetry.volatility;
+
   if (state.status === "live") {
-    state.execSpeed = 90 + Math.floor(Math.random() * 90);
-    const drift = (Math.random() - 0.42) * 0.35;
+    state.execSpeed = 85 + Math.floor(Math.random() * 95);
+    const drift = (Math.random() - 0.42) * vol;
     state.cumulativePnlPct = Number(
       (state.cumulativePnlPct + drift).toFixed(2),
     );
     state.activePositions = state.activePositions.map((pos, idx) => {
-      const delta = (Math.random() - 0.45) * (idx % 2 === 0 ? 0.28 : 0.48);
+      const delta = (Math.random() - 0.45) * vol * (idx % 2 === 0 ? 1 : 1.4);
       return {
         ...pos,
         pnl_pct: Number((pos.pnl_pct + delta).toFixed(2)),
@@ -119,38 +118,46 @@ export function tickRuntime(agentId: string): AgentRuntimeState {
     state.execSpeed = 0;
   }
 
-  store().set(agentId, state);
-  return { ...state, activePositions: state.activePositions.map((p) => ({ ...p })) };
+  store().set(runtimeKey(agentId, strategy.id), state);
+  return cloneState(state);
 }
 
-export function startAgent(agentId: string): AgentRuntimeState {
-  const state = getOrCreateRuntime(agentId);
-  if (state.status === "live") return tickRuntime(agentId);
+export function startAgent(
+  agentId: string,
+  strategyId: string,
+): AgentRuntimeState {
+  const strategy = strategyOrThrow(strategyId);
+  const state = getOrCreateRuntime(agentId, strategy.id);
+  if (state.status === "live") return tickRuntime(agentId, strategy.id);
 
   state.status = "live";
   state.execSpeed = 110 + Math.floor(Math.random() * 40);
   if (state.activePositions.length === 0) {
-    state.activePositions = DEFAULT_POSITIONS.map((p) => ({ ...p }));
+    state.activePositions = strategy.telemetry.positions.map((p) => ({
+      ...p,
+    }));
   }
   state.updatedAt = new Date().toISOString();
-  store().set(agentId, state);
-  return tickRuntime(agentId);
+  store().set(runtimeKey(agentId, strategy.id), state);
+  return tickRuntime(agentId, strategy.id);
 }
 
-export function stopAgent(agentId: string): AgentRuntimeState {
-  const state = getOrCreateRuntime(agentId);
+export function stopAgent(
+  agentId: string,
+  strategyId: string,
+): AgentRuntimeState {
+  const strategy = strategyOrThrow(strategyId);
+  const state = getOrCreateRuntime(agentId, strategy.id);
   state.status = "stopped";
   state.execSpeed = 0;
   state.updatedAt = new Date().toISOString();
-  store().set(agentId, state);
-  return {
-    ...state,
-    activePositions: state.activePositions.map((p) => ({ ...p })),
-  };
+  store().set(runtimeKey(agentId, strategy.id), state);
+  return cloneState(state);
 }
 
 export type BacktestResult = {
   window: string;
+  strategy_id: string;
   trades: number;
   win_rate_pct: number;
   pnl_pct: number;
@@ -161,24 +168,45 @@ export type BacktestResult = {
 
 export async function runBacktestStub(
   agentId: string,
+  strategyId: string,
   window = "30D",
 ): Promise<BacktestResult> {
   const catalog = getAgentById(agentId);
+  const strategy = strategyOrThrow(strategyId);
   const delayMs = 900 + Math.floor(Math.random() * 700);
   await new Promise((r) => setTimeout(r, delayMs));
 
-  const baseWin = catalog?.winRate ?? 62;
-  const basePnl = catalog?.pnlPercent ?? 22;
-  const noise = () => (Math.random() - 0.5) * 4;
+  const aggressive = strategy.id === "evolgo-pump-hunter";
+  const baseWin = (catalog?.winRate ?? 62) + (aggressive ? -4 : 2);
+  const basePnl =
+    strategy.telemetry.basePnl * (aggressive ? 1.35 : 1) +
+    (catalog?.pnlPercent ?? 20) * 0.08;
+  const noise = () => (Math.random() - 0.5) * (aggressive ? 6 : 3.5);
 
   return {
     window,
-    trades: 28 + Math.floor(Math.random() * 40),
-    win_rate_pct: Number((baseWin + noise() * 0.4).toFixed(1)),
-    pnl_pct: Number((basePnl * 0.22 + noise()).toFixed(2)),
-    max_drawdown_pct: Number((2.4 + Math.random() * 3.8).toFixed(2)),
-    sharpe: Number((1.05 + Math.random() * 0.9).toFixed(2)),
+    strategy_id: strategy.id,
+    trades: aggressive
+      ? 40 + Math.floor(Math.random() * 55)
+      : 24 + Math.floor(Math.random() * 36),
+    win_rate_pct: Number((baseWin + noise() * 0.35).toFixed(1)),
+    pnl_pct: Number((basePnl + noise()).toFixed(2)),
+    max_drawdown_pct: Number(
+      ((aggressive ? 4.2 : 2.1) + Math.random() * (aggressive ? 5.5 : 3.2)).toFixed(
+        2,
+      ),
+    ),
+    sharpe: Number(
+      ((aggressive ? 0.95 : 1.15) + Math.random() * 0.95).toFixed(2),
+    ),
     duration_ms: delayMs,
+  };
+}
+
+function cloneState(state: AgentRuntimeState): AgentRuntimeState {
+  return {
+    ...state,
+    activePositions: state.activePositions.map((p) => ({ ...p })),
   };
 }
 
@@ -186,6 +214,8 @@ export function metricsPayload(state: AgentRuntimeState) {
   return {
     ok: true as const,
     agentId: state.agentId,
+    strategy: state.strategyId,
+    strategy_id: state.strategyId,
     status: state.status,
     cumulative_pnl_pct: state.cumulativePnlPct,
     active_positions: state.activePositions,
