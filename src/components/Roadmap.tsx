@@ -5,34 +5,26 @@ import { SectionHeading } from "./ui/SectionHeading";
 
 const phases = [
   {
-    quarter: "Phase 1",
-    title: "Genesis & Token Launch",
+    quarter: "Now",
+    title: "Live on Mainnet",
     items: [
-      "Finalization of the core brand identity and deployment of the $NOVA token contract on MultiversX Mainnet.",
+      "Agents Beta · Staking · Referrals · Live Terminal",
     ],
     status: "done" as const,
   },
   {
-    quarter: "Phase 2",
-    title: "Intelligence Core & Platform UI",
+    quarter: "Next",
+    title: "Expand the stack",
     items: [
-      "Launch of the evolgo.app command surface, integrated wallet connectivity, and initial backtest telemetry data engine.",
+      "More agents · expanded strategy library · advanced execution",
     ],
     status: "active" as const,
   },
   {
-    quarter: "Phase 3",
-    title: "Local Agent & Strategy Deployment",
+    quarter: "Later",
+    title: "Scale the network",
     items: [
-      "Release of local hardware execution architecture, offline strategy packs, and custom risk-capping modules for independent operators.",
-    ],
-    status: "next" as const,
-  },
-  {
-    quarter: "Phase 4",
-    title: "Cloud Fleet & Mainnet Beta",
-    items: [
-      "Rollout of managed cloud execution workers, shared signal bus infrastructure, and advanced staking-gated automation features.",
+      "Cloud fleet · autonomous deployment · expanded agent network",
     ],
     status: "next" as const,
   },
@@ -42,32 +34,34 @@ const statusStyles = {
   done: {
     node: "bg-green shadow-[0_0_16px_rgba(57,255,138,0.6)]",
     badge: "text-green border-green/30 bg-green/10",
-    label: "Complete",
+    label: "Live",
   },
   active: {
     node: "bg-cyan shadow-[0_0_18px_rgba(0,240,255,0.7)] animate-pulse-glow",
     badge: "text-cyan border-cyan/30 bg-cyan/10",
-    label: "In Progress",
+    label: "Building",
   },
   next: {
     node: "bg-purple/80 shadow-[0_0_14px_rgba(179,71,255,0.45)]",
     badge: "text-purple border-purple/30 bg-purple/10",
-    label: "Upcoming",
+    label: "Horizon",
   },
 };
 
 export function Roadmap() {
   return (
-    <section id="roadmap" className="relative scroll-mt-24 px-4 py-16 sm:px-6 sm:py-24">
+    <section
+      id="roadmap"
+      className="relative scroll-mt-24 px-4 py-16 sm:px-6 sm:py-24"
+    >
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Roadmap"
-          title="Evolution Roadmap"
-          description="A clear evolution path from genesis through cloud fleet automation — EVOLGO powered by $NOVA on MultiversX."
+          title="Expansion Roadmap"
+          description="From live command layer to a broader autonomous agent network — EVOLGO powered by $NOVA on MultiversX."
         />
 
         <div className="relative">
-          {/* Vertical timeline line */}
           <div
             className="absolute left-[19px] top-2 bottom-2 w-px bg-gradient-to-b from-green via-cyan to-purple/40 sm:left-1/2 sm:-translate-x-px"
             aria-hidden
@@ -91,7 +85,6 @@ export function Roadmap() {
                   }}
                   className="relative grid grid-cols-[40px_1fr] gap-4 sm:grid-cols-[1fr_40px_1fr] sm:gap-0"
                 >
-                  {/* Mobile / desktop node */}
                   <div className="relative z-10 flex justify-center sm:col-start-2 sm:row-start-1">
                     <div
                       className={`mt-1 h-4 w-4 rounded-full ring-4 ring-void ${styles.node}`}

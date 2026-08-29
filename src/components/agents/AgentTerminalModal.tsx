@@ -25,6 +25,8 @@ type AgentTerminalModalProps = {
   agent: AgentDefinition | null;
   expiresAt?: string | null;
   onClose: () => void;
+  /** When true, highlight / scroll to the Run Backtest control on open. */
+  focusBacktest?: boolean;
 };
 
 type ChartPeriod = "7D" | "14D" | "30D" | "90D" | "1Y";
@@ -111,6 +113,7 @@ export function AgentTerminalModal({
   agent,
   expiresAt,
   onClose,
+  focusBacktest = false,
 }: AgentTerminalModalProps) {
   const [period, setPeriod] = useState<ChartPeriod>("30D");
   const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY_ID);
@@ -119,12 +122,14 @@ export function AgentTerminalModal({
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
   const [actionBusy, setActionBusy] = useState<"start" | "stop" | null>(null);
   const [backtestBusy, setBacktestBusy] = useState(false);
+  const [backtestHighlight, setBacktestHighlight] = useState(false);
   const [toast, setToast] = useState<{
     tone: "ok" | "err";
     text: string;
   } | null>(null);
   const pollFailRef = useRef(0);
   const logIdRef = useRef(0);
+  const backtestFocusRef = useRef<HTMLDivElement | null>(null);
 
   const selectedStrategy = getStrategyById(strategyId);
 
@@ -164,6 +169,25 @@ export function AgentTerminalModal({
     const id = window.setTimeout(() => setToast(null), 4200);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    if (!open || !focusBacktest) {
+      setBacktestHighlight(false);
+      return;
+    }
+    setBacktestHighlight(true);
+    const scrollId = window.setTimeout(() => {
+      backtestFocusRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }, 280);
+    const clearId = window.setTimeout(() => setBacktestHighlight(false), 4200);
+    return () => {
+      window.clearTimeout(scrollId);
+      window.clearTimeout(clearId);
+    };
+  }, [open, focusBacktest]);
 
   useEffect(() => {
     if (!open || !agent) return;
@@ -420,7 +444,14 @@ export function AgentTerminalModal({
               </header>
 
               {/* Actions strip */}
-              <div className="shrink-0 border-b border-white/10 bg-black/30 px-4 py-2.5 sm:px-5">
+              <div
+                ref={backtestFocusRef}
+                className={`shrink-0 border-b px-4 py-2.5 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
+                  backtestHighlight
+                    ? "border-cyan/45 bg-cyan/[0.07] shadow-[inset_0_0_28px_rgba(0,240,255,0.1)]"
+                    : "border-white/10 bg-black/30"
+                }`}
+              >
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
                     <div className="min-w-[220px] flex-1 sm:max-w-sm">
@@ -466,9 +497,13 @@ export function AgentTerminalModal({
                       onStop={() => void handleStop()}
                     />
                     <GlowButton
-                      variant="ghost"
+                      variant={backtestHighlight ? "cyan" : "ghost"}
                       className={`!px-3 !py-2 !text-[11px] ${
                         backtestBusy ? "pointer-events-none opacity-60" : ""
+                      } ${
+                        backtestHighlight
+                          ? "ring-2 ring-cyan/50 ring-offset-2 ring-offset-[#070a12]"
+                          : ""
                       }`}
                       onClick={() => void handleBacktest()}
                     >

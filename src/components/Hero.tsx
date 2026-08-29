@@ -1,9 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { GlowButton } from "./ui/GlowButton";
-import { ConnectWalletButton } from "./wallet/ConnectWalletButton";
-import { DashboardEntry } from "./dashboard/DashboardEntry";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 export function Hero() {
@@ -29,7 +28,7 @@ export function Hero() {
           transition={{ duration: 0.5 }}
           className="mb-4 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-cyan sm:text-[11px] sm:tracking-[0.28em] md:text-xs md:tracking-[0.35em]"
         >
-          MultiversX • Supernova • Quantum Trade
+          MultiversX · Autonomous AI · $NOVA
         </motion.p>
 
         <motion.h1
@@ -45,24 +44,21 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.18 }}
-          className="mt-4 max-w-xl font-display text-lg font-semibold leading-snug tracking-wide text-foreground sm:text-2xl md:text-3xl"
+          className="mt-4 max-w-2xl font-display text-lg font-semibold leading-snug tracking-wide text-foreground sm:text-2xl md:text-3xl"
         >
-          The AI that evolves with the market.
+          AI agents that evolve with the market
         </motion.p>
 
-        <motion.div
+        <motion.p
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.28 }}
-          className="mt-4 max-w-md space-y-3 text-sm leading-relaxed text-muted sm:text-base"
+          className="mt-4 max-w-xl text-sm leading-relaxed text-muted sm:text-base"
         >
-          <p>
-            Evolgo is an autonomous AI trading intelligence layer built to learn
-            from historical data, evolves its strategies, and adapts to market
-            conditions.
-          </p>
-          <p className="italic">Access and execution are powered by $NOVA.</p>
-        </motion.div>
+          EVOLGO combines autonomous AI agents, strategy backtesting and
+          real-time execution intelligence into one command layer — powered by
+          $NOVA.
+        </motion.p>
 
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -71,41 +67,35 @@ export function Hero() {
           id="buy"
           className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
         >
+          <Link href="/dashboard/agents" className="sm:min-w-[200px]">
+            <GlowButton variant="cyan" fullWidth>
+              Explore AI Agents
+            </GlowButton>
+          </Link>
           <GlowButton
-            variant="cyan"
+            variant="ghost"
             className="sm:min-w-[160px]"
             onClick={openBuyModal}
           >
-            Buy $NOVA
+            Get $NOVA
           </GlowButton>
-          <ConnectWalletButton
-            variant="ghost"
-            className="sm:min-w-[160px]"
-          />
-          <DashboardEntry compact className="sm:min-w-[140px] justify-center !py-3.5 !text-xs" />
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.55, duration: 0.6 }}
-          className="mt-10 flex flex-nowrap items-center gap-x-1.5 overflow-x-auto whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-muted [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-x-4 sm:text-[11px] sm:tracking-wider md:gap-x-6 [&::-webkit-scrollbar]:hidden"
+          className="mt-10 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted sm:text-[11px]"
         >
-          <span className="shrink-0">
-            Supply <span className="text-green">450M</span>
+          <span
+            className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-green shadow-[0_0_10px_rgba(57,255,138,0.75)]"
+            aria-hidden
+          />
+          <span className="text-green">Live</span>
+          <span className="text-white/25" aria-hidden>
+            ·
           </span>
-          <span className="shrink-0 text-white/20" aria-hidden>
-            |
-          </span>
-          <span className="shrink-0">
-            Chain <span className="text-cyan">MultiversX</span>
-          </span>
-          <span className="shrink-0 text-white/20" aria-hidden>
-            |
-          </span>
-          <span className="shrink-0">
-            Mechanism <span className="text-purple">Buyback & Burn</span>
-          </span>
+          <span>On MultiversX Mainnet</span>
         </motion.div>
       </div>
     </section>
