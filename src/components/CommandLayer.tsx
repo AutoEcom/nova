@@ -57,7 +57,10 @@ const toneAccent: Record<(typeof modules)[number]["tone"], string> = {
 };
 
 const defaultAgent =
-  AGENT_CATALOG.find((a) => a.freeAccess) ?? AGENT_CATALOG[0] ?? null;
+  AGENT_CATALOG.find((a) => a.freeAccess && a.availability === "live") ??
+  AGENT_CATALOG.find((a) => a.availability === "live") ??
+  AGENT_CATALOG[0] ??
+  null;
 
 export function CommandLayer() {
   const [terminalOpen, setTerminalOpen] = useState(false);

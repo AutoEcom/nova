@@ -7,7 +7,7 @@ import { AgentCard } from "@/components/agents/AgentCard";
 import { AgentPaywallModal } from "@/components/agents/AgentPaywallModal";
 import { AgentTerminalModal } from "@/components/agents/AgentTerminalModal";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { AGENT_CATALOG, type AgentDefinition } from "@/config/agents";
+import { AGENT_CATALOG, isAgentLaunchable, type AgentDefinition } from "@/config/agents";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 type SubMap = Record<string, { active: boolean; expiresAt?: string }>;
@@ -82,6 +82,11 @@ export function AgentsMarketplace() {
   };
 
   const handleLaunch = async (agent: AgentDefinition) => {
+    if (!isAgentLaunchable(agent)) {
+      setBanner(`${agent.name} is not launchable yet — ${agent.availability.replace("_", " ")}`);
+      return;
+    }
+
     // Production-ready free agent — skip paywall / subscription entirely.
     if (agent.freeAccess) {
       openTerminal(agent);
@@ -153,7 +158,7 @@ export function AgentsMarketplace() {
             ? "Syncing…"
             : isLoggedIn
               ? `${Object.values(subs).filter((s) => s.active).length} paid clearance(s)`
-              : "Nova Regressors · free to launch"}
+              : "Evolgo Consensus AI · free to launch"}
         </p>
       </div>
 

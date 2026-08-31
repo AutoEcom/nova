@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useGetAccount } from "@multiversx/sdk-dapp/out/react/account/useGetAccount";
 import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { GlowButton } from "@/components/ui/GlowButton";
-import { EXCHANGE_CATALOG } from "@/config/exchanges";
+import { EXCHANGE_CATALOG, getExchangeById } from "@/config/exchanges";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 type Connection = {
@@ -28,6 +28,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   const { openConnect } = useWalletUI();
 
   const [exchangeId, setExchangeId] = useState(EXCHANGE_CATALOG[0]!.id);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
@@ -35,6 +36,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  const selectedExchange = getExchangeById(exchangeId) ?? EXCHANGE_CATALOG[0]!;
 
   const loadConnections = useCallback(async (address: string) => {
     try {
@@ -53,13 +57,34 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPickerOpen(false);
+      return;
+    }
     if (isLoggedIn && account.address) {
       void loadConnections(account.address);
     } else {
       setConnections([]);
     }
   }, [open, isLoggedIn, account.address, loadConnections]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
 
   const handleSave = async () => {
     if (!isLoggedIn || !account.address) {
@@ -148,8 +173,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                   API Settings
                 </h2>
                 <p className="mt-1 text-[13px] leading-6 text-muted">
-                  Connect a venue for agent execution. Keys are encrypted at
-                  rest — secrets never leave the server in clear text.
+                  Connect a futures venue for agent execution. Keys are
+                  encrypted at rest — secrets never leave the server in clear
+                  text.
                 </p>
               </div>
               <GlowButton
@@ -162,22 +188,79 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
             </header>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
-              <label className="block">
+              <div ref={pickerRef} className="relative block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
                   Exchange
                 </span>
-                <select
-                  value={exchangeId}
-                  onChange={(e) => setExchangeId(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40"
+                <button
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={pickerOpen}
+                  onClick={() => setPickerOpen((v) => !v)}
+                  className="mt-1.5 flex w-full items-center justify-between gap-3 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 text-left outline-none transition-colors hover:border-cyan/30 focus:border-cyan/40"
                 >
-                  {EXCHANGE_CATALOG.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name} — {ex.blurb}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <span className="min-w-0">
+                    <span className="block font-display text-sm font-semibold text-foreground">
+                      {selectedExchange.name}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[10px] text-muted">
+                      {selectedExchange.blurb}
+                    </span>
+                  </span>
+                  <span
+                    className={`shrink-0 font-mono text-cyan transition-transform ${
+                      pickerOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden
+                  >
+                    ▾
+                  </span>
+                </button>
+
+                <AnimatePresence>
+                  {pickerOpen && (
+                    <motion.ul
+                      role="listbox"
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-xl border border-cyan/25 bg-deep/95 p-1 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md"
+                    >
+                      {EXCHANGE_CATALOG.map((ex) => {
+                        const active = ex.id === exchangeId;
+                        return (
+                          <li key={ex.id} role="option" aria-selected={active}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExchangeId(ex.id);
+                                setPickerOpen(false);
+                              }}
+                              className={`flex w-full flex-col rounded-lg px-3 py-2.5 text-left transition-colors ${
+                                active
+                                  ? "bg-cyan/15 text-cyan"
+                                  : "text-foreground hover:bg-white/[0.05]"
+                              }`}
+                            >
+                              <span className="font-display text-sm font-semibold">
+                                {ex.name}
+                              </span>
+                              <span
+                                className={`mt-0.5 font-mono text-[10px] ${
+                                  active ? "text-cyan/80" : "text-muted"
+                                }`}
+                              >
+                                {ex.blurb}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </motion.ul>
+                  )}
+                </AnimatePresence>
+              </div>
 
               <label className="block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">

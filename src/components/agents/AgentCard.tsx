@@ -3,7 +3,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GlowButton } from "@/components/ui/GlowButton";
-import type { AgentDefinition } from "@/config/agents";
+import {
+  formatMaxDrawdown,
+  formatRiskScore,
+  isAgentLaunchable,
+  type AgentDefinition,
+} from "@/config/agents";
 
 const accentRing: Record<AgentDefinition["accent"], string> = {
   cyan: "border-cyan/25 hover:border-cyan/40",
@@ -11,10 +16,16 @@ const accentRing: Record<AgentDefinition["accent"], string> = {
   green: "border-green/25 hover:border-green/40",
 };
 
-const statusStyle: Record<AgentDefinition["status"], string> = {
+const availabilityStyle: Record<AgentDefinition["availability"], string> = {
   live: "border-green/35 bg-green/12 text-green",
-  warming: "border-cyan/35 bg-cyan/12 text-cyan",
-  paused: "border-white/15 bg-white/[0.04] text-muted",
+  in_training: "border-cyan/35 bg-cyan/12 text-cyan",
+  coming_soon: "border-purple/35 bg-purple/12 text-purple",
+};
+
+const availabilityLabel: Record<AgentDefinition["availability"], string> = {
+  live: "Live",
+  in_training: "In Training",
+  coming_soon: "Coming Soon",
 };
 
 type AgentCardProps = {
@@ -36,12 +47,18 @@ export function AgentCard({
   delay = 0,
   onLaunch,
 }: AgentCardProps) {
-  const accessLabel = agent.freeAccess
-    ? "Free Access"
-    : subscribed
-      ? "Subscribed"
-      : "Locked";
-  const accessTone = agent.freeAccess || subscribed ? "text-green" : "text-muted";
+  const launchable = isAgentLaunchable(agent);
+  const accessLabel = !launchable
+    ? availabilityLabel[agent.availability]
+    : agent.freeAccess
+      ? "Free Access"
+      : subscribed
+        ? "Subscribed"
+        : "Locked";
+  const accessTone =
+    launchable && (agent.freeAccess || subscribed)
+      ? "text-green"
+      : "text-muted";
 
   const metrics = [
     {
@@ -52,11 +69,16 @@ export function AgentCard({
     {
       label: "Hist. PnL",
       value: `+${agent.pnlPercent.toFixed(1)}%`,
-      tone: "text-green",
+      tone: "text-profit",
     },
     {
-      label: "Risk Profile",
-      value: agent.risk,
+      label: "Max Drawdown",
+      value: formatMaxDrawdown(agent.maxDrawdownPct),
+      tone: "text-loss",
+    },
+    {
+      label: "Risk Score",
+      value: formatRiskScore(agent.riskScore, agent.riskBand),
       tone: "text-foreground",
     },
     {
@@ -74,7 +96,6 @@ export function AgentCard({
       strong
       className={`relative overflow-hidden border ${accentRing[agent.accent]} !p-0`}
     >
-      {/* Collapsed / always-visible header */}
       <button
         type="button"
         onClick={onToggle}
@@ -87,19 +108,19 @@ export function AgentCard({
               {agent.tagline}
             </span>
             <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider ${statusStyle[agent.status]}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[8px] uppercase tracking-wider ${availabilityStyle[agent.availability]}`}
             >
               <span
                 className={`h-1 w-1 rounded-full ${
-                  agent.status === "live"
-                    ? "bg-green shadow-[0_0_6px_rgba(57,255,138,0.65)] animate-pulse"
+                  agent.availability === "live"
+                    ? "bg-green shadow-[0_0_6px_rgba(14,203,129,0.65)] animate-pulse"
                     : "bg-current opacity-70"
                 }`}
                 aria-hidden
               />
-              {agent.status}
+              {availabilityLabel[agent.availability]}
             </span>
-            {agent.freeAccess && (
+            {agent.freeAccess && launchable && (
               <span className="inline-flex rounded-md border border-green/40 bg-green/12 px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-green">
                 Free
               </span>
@@ -112,10 +133,10 @@ export function AgentCard({
 
         <div className="hidden shrink-0 text-right sm:block">
           <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
-            Win Rate
+            MDD
           </p>
-          <p className="mt-0.5 font-display text-sm font-semibold text-cyan">
-            {agent.winRate.toFixed(1)}%
+          <p className="mt-0.5 font-mono text-sm font-medium tabular-nums text-loss">
+            {formatMaxDrawdown(agent.maxDrawdownPct)}
           </p>
         </div>
 
@@ -153,14 +174,14 @@ export function AgentCard({
                   ))}
                 </ul>
 
-                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1 sm:grid-cols-4">
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1 sm:grid-cols-3 lg:grid-cols-5">
                   {metrics.map((m) => (
                     <div key={m.label} className="min-w-0">
                       <dt className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
                         {m.label}
                       </dt>
                       <dd
-                        className={`mt-1 font-display text-sm font-semibold tracking-wide ${m.tone}`}
+                        className={`mt-1 font-mono text-sm font-medium tracking-wide tabular-nums ${m.tone}`}
                       >
                         {m.value}
                       </dd>
@@ -199,14 +220,20 @@ export function AgentCard({
               </div>
 
               <div className="flex w-full shrink-0 flex-col justify-end lg:w-44">
-                <GlowButton
-                  variant="cyan"
-                  fullWidth
-                  onClick={() => onLaunch(agent)}
-                  className={`!px-4 !py-3 !text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}
-                >
-                  Launch Terminal
-                </GlowButton>
+                {launchable ? (
+                  <GlowButton
+                    variant="cyan"
+                    fullWidth
+                    onClick={() => onLaunch(agent)}
+                    className={`!px-4 !py-3 !text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    Launch Terminal
+                  </GlowButton>
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center font-mono text-[10px] uppercase tracking-wider text-muted">
+                    {availabilityLabel[agent.availability]}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

@@ -13,13 +13,13 @@ const orbitron = Orbitron({
 const sora = Sora({
   variable: "--font-sora",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+  weight: ["400", "500", "600"],
 });
 
 const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -87,7 +87,7 @@ export default function RootLayout({
       lang="en"
       className={`${orbitron.variable} ${sora.variable} ${jetbrains.variable} h-full antialiased`}
     >
-      <body className="cyber-bg flex min-h-full flex-col font-sans text-foreground">
+      <body className="cyber-bg flex min-h-full flex-col font-sans text-[15px] font-normal leading-relaxed text-foreground antialiased">
         <MultiversXProvider>
           <SiteChrome>{children}</SiteChrome>
         </MultiversXProvider>

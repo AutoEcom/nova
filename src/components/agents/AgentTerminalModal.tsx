@@ -4,10 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeApiModal } from "@/components/agents/ExchangeApiModal";
-import type { AgentDefinition } from "@/config/agents";
 import {
-  DEFAULT_STRATEGY_ID,
-  STRATEGY_CATALOG,
+  formatMaxDrawdown,
+  formatRiskScore,
+  MIN_CAPITAL_ALLOCATION_USD,
+  type AgentDefinition,
+} from "@/config/agents";
+import {
+  BINANCE_TOP10_FUTURES,
   getStrategyById,
 } from "@/config/strategies";
 import {
@@ -51,13 +55,14 @@ const PERIOD_POINTS: Record<ChartPeriod, number> = {
 };
 
 const POLL_MS = 5000;
+const DEFAULT_CAPITAL = "1000";
 
 const LOG_TONE: Record<LogKind, string> = {
-  exec: "text-green",
+  exec: "text-profit",
   telemetry: "text-cyan",
   risk: "text-amber-300",
-  system: "text-foreground/80",
-  warn: "text-amber-200/90",
+  system: "text-foreground/85",
+  warn: "text-loss",
 };
 
 const LOG_TAG: Record<LogKind, string> = {
@@ -108,6 +113,12 @@ function nowTime() {
   return new Date().toLocaleTimeString();
 }
 
+function parseCapital(raw: string): number | null {
+  const n = Number(raw.replace(/,/g, "").trim());
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 export function AgentTerminalModal({
   open,
   agent,
@@ -115,8 +126,12 @@ export function AgentTerminalModal({
   onClose,
   focusBacktest = false,
 }: AgentTerminalModalProps) {
+  const strategyId = agent?.strategyId ?? "evolgo-consensus";
+  const boundStrategy = getStrategyById(strategyId);
+
   const [period, setPeriod] = useState<ChartPeriod>("30D");
-  const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY_ID);
+  const [capitalInput, setCapitalInput] = useState(DEFAULT_CAPITAL);
+  const [capitalError, setCapitalError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
@@ -130,8 +145,6 @@ export function AgentTerminalModal({
   const pollFailRef = useRef(0);
   const logIdRef = useRef(0);
   const backtestFocusRef = useRef<HTMLDivElement | null>(null);
-
-  const selectedStrategy = getStrategyById(strategyId);
 
   const pushLog = useCallback((kind: LogKind, message: string) => {
     logIdRef.current += 1;
@@ -151,6 +164,22 @@ export function AgentTerminalModal({
   const applyMetrics = useCallback((next: TerminalMetrics) => {
     setMetrics(next);
   }, []);
+
+  const validateCapital = useCallback((): number | null => {
+    const amount = parseCapital(capitalInput);
+    if (amount === null) {
+      setCapitalError("Enter a valid allocation amount");
+      return null;
+    }
+    if (amount < MIN_CAPITAL_ALLOCATION_USD) {
+      setCapitalError(
+        `Minimum allocation is $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()}`,
+      );
+      return null;
+    }
+    setCapitalError(null);
+    return amount;
+  }, [capitalInput]);
 
   useEffect(() => {
     if (!open) {
@@ -192,7 +221,8 @@ export function AgentTerminalModal({
   useEffect(() => {
     if (!open || !agent) return;
     setPeriod("30D");
-    setStrategyId(DEFAULT_STRATEGY_ID);
+    setCapitalInput(DEFAULT_CAPITAL);
+    setCapitalError(null);
     setMetrics(null);
     pollFailRef.current = 0;
     setLogs([
@@ -200,30 +230,30 @@ export function AgentTerminalModal({
         id: "boot-1",
         time: nowTime(),
         kind: "system",
-        message: `${agent.name.toUpperCase()} COMMAND CENTER ONLINE`,
+        message: `${agent.name.toUpperCase()} WORKSPACE ONLINE`,
       },
       {
         id: "boot-2",
         time: nowTime(),
         kind: "telemetry",
-        message: `METRICS STREAM · strategy ${DEFAULT_STRATEGY_ID} · poll 5s`,
+        message: `DEDICATED STRATEGY · ${boundStrategy?.name ?? strategyId} · Binance Futures top-10`,
       },
       {
         id: "boot-3",
         time: nowTime(),
         kind: "risk",
-        message: "RISK ENGINE ARMED · kill-switch standby",
+        message: `RISK · MDD ${formatMaxDrawdown(agent.maxDrawdownPct)} · score ${formatRiskScore(agent.riskScore, agent.riskBand)}`,
       },
       {
         id: "boot-4",
         time: nowTime(),
         kind: agent.freeAccess ? "exec" : "system",
         message: agent.freeAccess
-          ? "PUBLIC ACCESS GRANTED · production sandbox live"
-          : "CLEARANCE VERIFIED · terminal unlocked",
+          ? "PUBLIC ACCESS GRANTED · capital allocation required before start"
+          : "CLEARANCE VERIFIED · capital allocation required before start",
       },
     ]);
-  }, [open, agent]);
+  }, [open, agent, boundStrategy?.name, strategyId]);
 
   useEffect(() => {
     if (!open || !agent) return;
@@ -278,21 +308,33 @@ export function AgentTerminalModal({
   const path = useMemo(() => buildPath(series), [series]);
   const area = useMemo(() => buildArea(series), [series]);
   const regime =
-    agent?.risk === "Aggressive"
+    agent?.riskBand === "Elevated" || agent?.riskBand === "High"
       ? "Momentum Burst"
-      : agent?.risk === "Conservative"
+      : agent?.riskBand === "Low"
         ? "Capital Preserve"
         : "Mean Revert";
 
   const handleStart = async () => {
     if (!agent || actionBusy) return;
+    const capital = validateCapital();
+    if (capital === null) {
+      pushLog(
+        "warn",
+        `CAPITAL REJECTED · minimum $${MIN_CAPITAL_ALLOCATION_USD} USD required`,
+      );
+      setToast({
+        tone: "err",
+        text: `Minimum allocation $${MIN_CAPITAL_ALLOCATION_USD}`,
+      });
+      return;
+    }
     setActionBusy("start");
     try {
       const next = await postAgentStart(agent.id, strategyId);
       applyMetrics(next);
       pushLog(
         "exec",
-        `AGENT START · ${selectedStrategy?.name ?? strategyId} · venues hot`,
+        `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · venues hot`,
       );
       setToast({ tone: "ok", text: "Agent started" });
     } catch (err) {
@@ -312,7 +354,7 @@ export function AgentTerminalModal({
       applyMetrics(next);
       pushLog(
         "system",
-        `AGENT STOP · ${selectedStrategy?.name ?? strategyId} · inventory held`,
+        `AGENT STOP · ${boundStrategy?.name ?? strategyId} · inventory held`,
       );
       setToast({ tone: "ok", text: "Agent stopped" });
     } catch (err) {
@@ -326,10 +368,22 @@ export function AgentTerminalModal({
 
   const handleBacktest = async () => {
     if (!agent || backtestBusy) return;
+    const capital = validateCapital();
+    if (capital === null) {
+      pushLog(
+        "warn",
+        `BACKTEST BLOCKED · allocate at least $${MIN_CAPITAL_ALLOCATION_USD} USD`,
+      );
+      setToast({
+        tone: "err",
+        text: `Minimum allocation $${MIN_CAPITAL_ALLOCATION_USD}`,
+      });
+      return;
+    }
     setBacktestBusy(true);
     pushLog(
       "telemetry",
-      `BACKTEST QUEUED · ${selectedStrategy?.name ?? strategyId} · window ${period}`,
+      `BACKTEST QUEUED · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · window ${period}`,
     );
     try {
       const { result } = await postAgentBacktest(
@@ -354,17 +408,6 @@ export function AgentTerminalModal({
     }
   };
 
-  const handleStrategyChange = (nextId: string) => {
-    if (nextId === strategyId) return;
-    setStrategyId(nextId);
-    setMetrics(null);
-    const next = getStrategyById(nextId);
-    pushLog(
-      "system",
-      `STRATEGY SWITCH · ${next?.name ?? nextId} · reloading isolated telemetry`,
-    );
-  };
-
   if (!agent) return null;
 
   const isLive = runStatus === "live";
@@ -377,7 +420,7 @@ export function AgentTerminalModal({
       <AnimatePresence>
         {open && (
           <motion.div
-            className="fixed inset-0 z-[90] flex items-stretch justify-center bg-void/90 p-0 backdrop-blur-md sm:p-3 md:p-5"
+            className="fixed inset-0 z-[90] flex h-[100dvh] w-screen items-stretch justify-center bg-void"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -386,18 +429,18 @@ export function AgentTerminalModal({
               role="dialog"
               aria-modal
               aria-labelledby="agent-terminal-title"
-              initial={{ opacity: 0, y: 20, scale: 0.985 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.99 }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className="relative flex h-full w-full max-w-[1400px] flex-col overflow-hidden border border-cyan/20 bg-[#070a12] shadow-[0_0_80px_rgba(0,240,255,0.1)] sm:rounded-2xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="relative flex h-full w-full flex-col overflow-hidden border-0 bg-[#070a12]"
             >
-              <header className="shrink-0 border-b border-white/10 bg-black/40">
+              <header className="shrink-0 border-b border-white/10 bg-black/50">
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-cyan">
-                        Evolgo Command Center
+                        Evolgo Command Center · Fullscreen
                       </p>
                       <StatusBadge status={runStatus} />
                     </div>
@@ -407,11 +450,12 @@ export function AgentTerminalModal({
                     >
                       {agent.name}
                     </h2>
-                    {expiresAt && (
-                      <p className="mt-0.5 font-mono text-[9px] text-muted">
-                        Clearance until {new Date(expiresAt).toLocaleString()}
-                      </p>
-                    )}
+                    <p className="mt-0.5 font-mono text-[9px] text-muted">
+                      {boundStrategy?.name ?? strategyId}
+                      {expiresAt
+                        ? ` · Clearance until ${new Date(expiresAt).toLocaleString()}`
+                        : ""}
+                    </p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -424,6 +468,10 @@ export function AgentTerminalModal({
                       value={metrics ? `${execSpeed} ops/m` : "—"}
                     />
                     <TelemetryChip label="Regime" value={regime} accent />
+                    <TelemetryChip
+                      label="MDD"
+                      value={formatMaxDrawdown(agent.maxDrawdownPct)}
+                    />
                     <TelemetryChip label="Tick" value={`#${tick}`} />
                     <GlowButton
                       variant="purple"
@@ -443,49 +491,60 @@ export function AgentTerminalModal({
                 </div>
               </header>
 
-              {/* Actions strip */}
+              {/* Actions strip — capital + controls (no strategy switcher) */}
               <div
                 ref={backtestFocusRef}
                 className={`shrink-0 border-b px-4 py-2.5 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
                   backtestHighlight
                     ? "border-cyan/45 bg-cyan/[0.07] shadow-[inset_0_0_28px_rgba(0,240,255,0.1)]"
-                    : "border-white/10 bg-black/30"
+                    : "border-white/10 bg-black/35"
                 }`}
               >
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-                    <div className="min-w-[220px] flex-1 sm:max-w-sm">
+                    <div className="min-w-[180px] max-w-xs flex-1">
                       <label
-                        htmlFor="strategy-selector"
+                        htmlFor="capital-allocation"
                         className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted"
                       >
-                        Strategy Selector
+                        Capital Allocation (USD)
                       </label>
-                      <select
-                        id="strategy-selector"
-                        value={strategyId}
-                        onChange={(e) => handleStrategyChange(e.target.value)}
-                        className="mt-1.5 w-full rounded-xl border border-cyan/25 bg-void/80 px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/50"
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] text-muted">
+                          $
+                        </span>
+                        <input
+                          id="capital-allocation"
+                          type="number"
+                          min={MIN_CAPITAL_ALLOCATION_USD}
+                          step="50"
+                          inputMode="decimal"
+                          value={capitalInput}
+                          onChange={(e) => {
+                            setCapitalInput(e.target.value);
+                            setCapitalError(null);
+                          }}
+                          className="w-full rounded-xl border border-cyan/25 bg-void/80 py-2 pl-7 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-cyan/50"
+                        />
+                      </div>
+                      <p
+                        className={`mt-1 font-mono text-[9px] ${
+                          capitalError ? "text-magenta" : "text-muted"
+                        }`}
                       >
-                        {STRATEGY_CATALOG.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                            {s.status === "beta" ? " · beta" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedStrategy && (
-                        <p className="mt-1 truncate font-mono text-[9px] text-muted">
-                          {selectedStrategy.blurb}
-                        </p>
-                      )}
+                        {capitalError ??
+                          `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · required for Start & Backtest`}
+                      </p>
                     </div>
                     <div className="pb-0.5">
                       <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
-                        Actions
+                        Bound Strategy
                       </p>
-                      <p className="mt-0.5 font-mono text-[10px] text-muted">
-                        Isolated runtime · stub
+                      <p className="mt-0.5 font-mono text-[11px] text-cyan">
+                        {boundStrategy?.name ?? strategyId}
+                      </p>
+                      <p className="mt-0.5 max-w-xs truncate font-mono text-[9px] text-muted">
+                        {boundStrategy?.blurb ?? "Dedicated agent workspace"}
                       </p>
                     </div>
                   </div>
@@ -520,8 +579,8 @@ export function AgentTerminalModal({
                 </div>
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1.55fr_0.9fr]">
-                <div className="min-h-0 space-y-3 overflow-y-auto border-b border-white/10 p-3 sm:p-4 lg:border-b-0 lg:border-r">
+              <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[1.65fr_0.85fr]">
+                <div className="min-h-0 space-y-3 overflow-y-auto border-b border-white/10 p-3 sm:p-4 xl:border-b-0 xl:border-r">
                   <section className="rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4">
                     <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
                       <div>
@@ -529,15 +588,15 @@ export function AgentTerminalModal({
                           Cumulative PnL
                         </p>
                         <p
-                          className={`mt-1 font-display text-2xl font-semibold sm:text-3xl ${
-                            livePnl >= 0 ? "text-cyan" : "text-magenta"
+                          className={`mt-1 font-mono text-2xl font-medium tracking-tight sm:text-3xl ${
+                            livePnl >= 0 ? "text-profit" : "text-loss"
                           }`}
                         >
                           {pnlDisplay}
                         </p>
                         <p className="mt-0.5 font-mono text-[10px] text-muted">
-                          Live feed · {selectedStrategy?.name ?? strategyId} ·{" "}
-                          {period} · {agent.tagline}
+                          Live feed · {boundStrategy?.name ?? strategyId} ·{" "}
+                          {period} · Binance Futures
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -563,7 +622,7 @@ export function AgentTerminalModal({
 
                     <svg
                       viewBox="0 0 640 160"
-                      className="h-40 w-full sm:h-48"
+                      className="h-44 w-full sm:h-52"
                       aria-hidden
                     >
                       <defs>
@@ -606,98 +665,128 @@ export function AgentTerminalModal({
                     </svg>
                   </section>
 
+                  <section className="rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 sm:px-4">
+                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                      Universe · Top 10 Binance Futures
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {BINANCE_TOP10_FUTURES.map((pair) => (
+                        <span
+                          key={pair}
+                          className="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 font-mono text-[9px] text-muted"
+                        >
+                          {pair}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+
                   <section className="rounded-xl border border-white/10 bg-black/35">
                     <div className="flex items-center justify-between border-b border-white/8 px-3 py-2.5 sm:px-4">
                       <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
                         Active Positions
                       </p>
                       <p className="font-mono text-[9px] text-cyan">
-                        {positions.filter((t) => t.status === "Open").length}{" "}
-                        open
+                        {isLive
+                          ? `${positions.filter((t) => t.status === "Open").length} open`
+                          : "Offline"}
                       </p>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[640px] border-collapse text-left">
-                        <thead>
-                          <tr className="border-b border-white/8 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                            <th className="px-3 py-2.5 font-medium sm:px-4">
-                              Pair / Asset
-                            </th>
-                            <th className="px-3 py-2.5 font-medium">Type</th>
-                            <th className="px-3 py-2.5 font-medium">Entry</th>
-                            <th className="px-3 py-2.5 font-medium">Size</th>
-                            <th className="px-3 py-2.5 font-medium">PnL %</th>
-                            <th className="px-3 py-2.5 font-medium">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {positions.length === 0 && (
-                            <tr>
-                              <td
-                                colSpan={6}
-                                className="px-3 py-5 font-mono text-[11px] text-muted sm:px-4"
-                              >
-                                {isLive
-                                  ? "No open positions yet."
-                                  : "Agent stopped — start the agent to open positions."}
-                              </td>
+                    {!isLive ? (
+                      <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-2.5 py-1 font-mono text-[9px] uppercase tracking-wider text-muted">
+                          <span className="h-1.5 w-1.5 rounded-full bg-muted" />
+                          Stopped
+                        </span>
+                        <p className="font-mono text-[12px] text-foreground/80">
+                          Agent offline — No active exposure
+                        </p>
+                        <p className="font-mono text-[10px] text-muted">
+                          Disconnected from live books · start agent to resume
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[640px] border-collapse text-left">
+                          <thead>
+                            <tr className="border-b border-white/8 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                              <th className="px-3 py-2.5 font-medium sm:px-4">
+                                Pair
+                              </th>
+                              <th className="px-3 py-2.5 font-medium">Type</th>
+                              <th className="px-3 py-2.5 font-medium">Entry</th>
+                              <th className="px-3 py-2.5 font-medium">Size</th>
+                              <th className="px-3 py-2.5 font-medium">PnL %</th>
+                              <th className="px-3 py-2.5 font-medium">Status</th>
                             </tr>
-                          )}
-                          {positions.map((row) => (
-                            <tr
-                              key={row.id}
-                              className="border-b border-white/[0.04] font-mono text-[11px] last:border-b-0"
-                            >
-                              <td className="px-3 py-2.5 text-foreground sm:px-4">
-                                {row.pair}
-                              </td>
-                              <td
-                                className={`px-3 py-2.5 font-semibold ${
-                                  row.side === "Long"
-                                    ? "text-green"
-                                    : "text-magenta"
-                                }`}
+                          </thead>
+                          <tbody>
+                            {positions.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={6}
+                                  className="px-3 py-5 font-mono text-[11px] text-muted sm:px-4"
+                                >
+                                  No open positions yet.
+                                </td>
+                              </tr>
+                            )}
+                            {positions.map((row) => (
+                              <tr
+                                key={row.id}
+                                className="border-b border-white/[0.04] last:border-b-0"
                               >
-                                {row.side}
-                              </td>
-                              <td className="px-3 py-2.5 text-muted">
-                                {row.entry}
-                              </td>
-                              <td className="px-3 py-2.5 text-muted">
-                                {row.size}
-                              </td>
-                              <td
-                                className={`px-3 py-2.5 font-semibold ${
-                                  row.pnl_pct >= 0
-                                    ? "text-green"
-                                    : "text-magenta"
-                                }`}
-                              >
-                                {row.pnl_pct >= 0 ? "+" : ""}
-                                {row.pnl_pct.toFixed(2)}%
-                              </td>
-                              <td className="px-3 py-2.5">
-                                <span
-                                  className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
-                                    row.status === "Open"
-                                      ? "bg-cyan/15 text-cyan"
-                                      : row.status === "Partial"
-                                        ? "bg-amber-300/15 text-amber-200"
-                                        : "bg-white/5 text-muted"
+                                <td className="px-3 py-2.5 font-mono text-[11px] font-medium text-foreground sm:px-4">
+                                  {row.pair}
+                                </td>
+                                <td
+                                  className={`px-3 py-2.5 font-mono text-[11px] font-medium ${
+                                    row.side === "Long"
+                                      ? "text-long"
+                                      : "text-short"
                                   }`}
                                 >
-                                  {row.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                  {row.side}
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-[11px] font-medium text-muted">
+                                  {row.entry}
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-[11px] font-medium text-muted">
+                                  {row.size}
+                                </td>
+                                <td
+                                  className={`px-3 py-2.5 font-mono text-[11px] font-medium ${
+                                    row.pnl_pct >= 0
+                                      ? "text-profit"
+                                      : "text-loss"
+                                  }`}
+                                >
+                                  {row.pnl_pct >= 0 ? "+" : ""}
+                                  {row.pnl_pct.toFixed(2)}%
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <span
+                                    className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                                      row.status === "Open"
+                                        ? "bg-cyan/15 text-cyan"
+                                        : row.status === "Partial"
+                                          ? "bg-amber-300/15 text-amber-200"
+                                          : "bg-white/5 text-muted"
+                                    }`}
+                                  >
+                                    {row.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </section>
                 </div>
 
-                <aside className="flex min-h-0 flex-col bg-black/25">
+                <aside className="flex min-h-0 flex-col bg-black/30">
                   <div className="flex items-center justify-between border-b border-white/8 px-3 py-2.5 sm:px-4">
                     <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
                       Execution Log
@@ -728,9 +817,16 @@ export function AgentTerminalModal({
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 border-t border-white/8 p-3 sm:p-4">
+                  <div className="grid grid-cols-2 gap-2 border-t border-white/8 p-3 sm:grid-cols-4 sm:p-4">
                     <Stat label="Win Rate" value={`${agent.winRate}%`} />
-                    <Stat label="Risk" value={agent.risk} />
+                    <Stat
+                      label="Max Drawdown"
+                      value={formatMaxDrawdown(agent.maxDrawdownPct)}
+                    />
+                    <Stat
+                      label="Risk Score"
+                      value={formatRiskScore(agent.riskScore, agent.riskBand)}
+                    />
                     <Stat
                       label="Runtime"
                       value={isLive ? "Live" : "Stopped"}
@@ -745,10 +841,10 @@ export function AgentTerminalModal({
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 8 }}
-                    className={`pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-xl border px-4 py-2.5 font-mono text-[11px] shadow-[0_0_28px_rgba(0,0,0,0.45)] ${
+                    className={`pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-xl border px-4 py-2.5 font-mono text-[11px] font-medium shadow-[0_0_28px_rgba(0,0,0,0.45)] ${
                       toast.tone === "ok"
-                        ? "border-green/35 bg-deep/95 text-green"
-                        : "border-magenta/40 bg-deep/95 text-magenta"
+                        ? "border-profit/40 bg-deep/95 text-profit"
+                        : "border-loss/45 bg-deep/95 text-loss"
                     }`}
                   >
                     {toast.text}
@@ -780,7 +876,7 @@ function StatusBadge({ status }: { status: TerminalStatus }) {
       <span
         className={`h-1.5 w-1.5 rounded-full ${
           live
-            ? "animate-pulse bg-green shadow-[0_0_8px_rgba(57,255,138,0.7)]"
+            ? "animate-pulse bg-green shadow-[0_0_8px_rgba(14,203,129,0.7)]"
             : "bg-muted"
         }`}
       />
@@ -860,7 +956,7 @@ function TelemetryChip({
         {label}
       </p>
       <p
-        className={`mt-0.5 font-mono text-[11px] font-medium ${
+        className={`mt-0.5 font-mono text-[12px] font-medium tabular-nums ${
           accent ? "text-cyan" : "text-foreground"
         }`}
       >
@@ -876,7 +972,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-muted">
         {label}
       </p>
-      <p className="mt-0.5 truncate font-display text-xs font-semibold text-foreground">
+      <p className="mt-0.5 truncate font-mono text-xs font-medium tabular-nums text-foreground">
         {value}
       </p>
     </div>

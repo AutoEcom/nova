@@ -35,14 +35,14 @@ export type AgentRuntimeState = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __evolgoAgentRuntimeV2?: Map<string, AgentRuntimeState>;
+  __evolgoAgentRuntimeV3?: Map<string, AgentRuntimeState>;
 };
 
 function store(): Map<string, AgentRuntimeState> {
-  if (!g.__evolgoAgentRuntimeV2) {
-    g.__evolgoAgentRuntimeV2 = new Map();
+  if (!g.__evolgoAgentRuntimeV3) {
+    g.__evolgoAgentRuntimeV3 = new Map();
   }
-  return g.__evolgoAgentRuntimeV2;
+  return g.__evolgoAgentRuntimeV3;
 }
 
 export function runtimeKey(agentId: string, strategyId: string): string {
@@ -150,6 +150,7 @@ export function stopAgent(
   const state = getOrCreateRuntime(agentId, strategy.id);
   state.status = "stopped";
   state.execSpeed = 0;
+  state.activePositions = [];
   state.updatedAt = new Date().toISOString();
   store().set(runtimeKey(agentId, strategy.id), state);
   return cloneState(state);

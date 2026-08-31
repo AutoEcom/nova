@@ -61,13 +61,21 @@ export function MeetTheAgents() {
               </p>
 
               <dl className="mt-5 grid grid-cols-2 gap-2">
-                <Attr label="Strategy" value={agent.tagline.split(" ")[0] ?? "—"} />
+                <Attr label="Strategy" value={agent.tagline} />
                 <Attr
                   label="Performance"
                   value={`+${agent.pnlPercent}%`}
+                  tone="text-profit"
                 />
-                <Attr label="Risk" value={agent.risk} />
-                <Attr label="Backtest" value={`${agent.winRate}% WR`} />
+                <Attr
+                  label="Max Drawdown"
+                  value={`${agent.maxDrawdownPct.toFixed(1)}%`}
+                  tone="text-loss"
+                />
+                <Attr
+                  label="Risk Score"
+                  value={`${agent.riskScore}% (${agent.riskBand})`}
+                />
               </dl>
 
               <Link
@@ -88,13 +96,23 @@ export function MeetTheAgents() {
   );
 }
 
-function Attr({ label, value }: { label: string; value: string }) {
+function Attr({
+  label,
+  value,
+  tone = "text-foreground",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
   return (
     <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
-      <dt className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+      <dt className="font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 truncate font-mono text-[12px] text-foreground">
+      <dd
+        className={`mt-0.5 truncate font-mono text-[12px] font-medium tabular-nums ${tone}`}
+      >
         {value}
       </dd>
     </div>
