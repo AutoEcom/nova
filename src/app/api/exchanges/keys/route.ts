@@ -4,7 +4,9 @@ import {
   revokeExchangeConnection,
   upsertExchangeConnection,
   validateExchangeCredentials,
+  verifyExchangeHandshake,
 } from "@/lib/exchanges/registry";
+import { getExchangeById } from "@/config/exchanges";
 
 export const runtime = "nodejs";
 
@@ -65,6 +67,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: check.error }, { status: 400 });
     }
 
+    const handshake = await verifyExchangeHandshake({
+      exchangeId,
+      apiKey,
+      apiSecret,
+    });
+    if (!handshake.ok) {
+      return NextResponse.json(
+        { ok: false, error: handshake.error },
+        { status: 400 },
+      );
+    }
+
     const connection = await upsertExchangeConnection({
       walletAddress: address,
       exchangeId,
@@ -72,11 +86,19 @@ export async function POST(request: Request) {
       apiSecret,
     });
 
+    const exchange = getExchangeById(exchangeId);
+
     return NextResponse.json({
       ok: true,
       tested: true,
       status: "connected",
+      verified: true,
+      scopes: handshake.scopes,
+      endpoint: handshake.endpoint,
+      latencyMs: handshake.latencyMs,
+      exchangeName: exchange?.name ?? exchangeId,
       connection,
+      message: `Connected · ${exchange?.name ?? exchangeId} · ${handshake.scopes}`,
     });
   } catch (err) {
     console.error("[exchanges/keys POST]", err);

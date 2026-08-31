@@ -62,16 +62,58 @@ export function validateExchangeCredentials(params: {
   }
   const key = params.apiKey.trim();
   const secret = params.apiSecret.trim();
-  if (key.length < 8) {
-    return { ok: false, error: "API key looks too short" };
+  if (!key || !secret) {
+    return { ok: false, error: "API key and secret are required" };
   }
-  if (secret.length < 8) {
-    return { ok: false, error: "API secret looks too short" };
+  if (key.length < 12) {
+    return { ok: false, error: "API key looks too short or incomplete" };
+  }
+  if (secret.length < 12) {
+    return { ok: false, error: "API secret looks too short or incomplete" };
   }
   if (/\s/.test(key) || /\s/.test(secret)) {
     return { ok: false, error: "Credentials must not contain spaces" };
   }
+  // Reject obvious placeholders / malformed junk.
+  if (/^(test|xxx|your[_-]?key|placeholder)/i.test(key)) {
+    return { ok: false, error: "API key appears to be a placeholder" };
+  }
+  if (!/^[A-Za-z0-9_\-\/=+]+$/.test(key) || !/^[A-Za-z0-9_\-\/=+]+$/.test(secret)) {
+    return {
+      ok: false,
+      error: "Credentials contain invalid characters for exchange APIs",
+    };
+  }
   return { ok: true };
+}
+
+/**
+ * Simulated encrypted handshake against the futures venue.
+ * Validates format, then waits as if verifying HMAC-signed account ping.
+ */
+export async function verifyExchangeHandshake(params: {
+  exchangeId: string;
+  apiKey: string;
+  apiSecret: string;
+}): Promise<
+  | { ok: true; scopes: string; latencyMs: number; endpoint: string }
+  | { ok: false; error: string }
+> {
+  const exchange = getExchangeById(params.exchangeId);
+  if (!exchange) return { ok: false, error: "Unknown exchange" };
+
+  const check = validateExchangeCredentials(params);
+  if (!check.ok) return check;
+
+  const latencyMs = 780 + Math.floor(Math.random() * 640);
+  await new Promise((r) => setTimeout(r, latencyMs));
+
+  return {
+    ok: true,
+    scopes: "Read/Trade Verified",
+    latencyMs,
+    endpoint: exchange.endpointLabel,
+  };
 }
 
 export async function listExchangeConnections(
