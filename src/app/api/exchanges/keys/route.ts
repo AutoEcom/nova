@@ -14,9 +14,29 @@ function validAddress(address: string): boolean {
   return /^erd1[a-z0-9]{58}$/i.test(address);
 }
 
+function supabaseConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
+  );
+}
+
+function configErrorResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Server misconfigured: SUPABASE_SERVICE_ROLE_KEY is required to store exchange API keys",
+    },
+    { status: 503 },
+  );
+}
+
 /** GET /api/exchanges/keys?address=erd1... */
 export async function GET(request: Request) {
   try {
+    if (!supabaseConfigured()) return configErrorResponse();
+
     const address = new URL(request.url).searchParams.get("address")?.trim() ?? "";
     if (!validAddress(address)) {
       return NextResponse.json(
@@ -44,6 +64,8 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    if (!supabaseConfigured()) return configErrorResponse();
+
     const body = (await request.json()) as {
       address?: string;
       exchangeId?: string;
@@ -115,6 +137,8 @@ export async function POST(request: Request) {
 /** DELETE { address, connectionId } */
 export async function DELETE(request: Request) {
   try {
+    if (!supabaseConfigured()) return configErrorResponse();
+
     const body = (await request.json()) as {
       address?: string;
       connectionId?: string;

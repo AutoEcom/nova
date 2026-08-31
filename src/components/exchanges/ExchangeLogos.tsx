@@ -1,7 +1,5 @@
 "use client";
 
-import Image from "next/image";
-
 type MarkProps = {
   className?: string;
   size?: number;
@@ -10,7 +8,8 @@ type MarkProps = {
 /** Official Binance logo (Wikimedia Commons: Binance_Logo.svg). */
 export function BinanceMark({ className = "", size = 32 }: MarkProps) {
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       src="/exchanges/binance.svg"
       alt=""
       width={size}
@@ -24,7 +23,8 @@ export function BinanceMark({ className = "", size = 32 }: MarkProps) {
 /** Official OKX logo (Wikimedia Commons: OKX_Logo.svg). */
 export function OkxMark({ className = "", size = 32 }: MarkProps) {
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       src="/exchanges/okx.svg"
       alt=""
       width={size}

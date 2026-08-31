@@ -25,6 +25,16 @@ type ExchangeApiModalProps = {
 
 type VerifyPhase = "idle" | "verifying" | "success" | "error";
 
+const VERIFY_BUTTON_LABEL = "Verifying API keys & HMAC signatures...";
+
+function statusBadge(params: {
+  exchangeName: string;
+  latencyMs?: number | null;
+}): string {
+  const base = `Connected · ${params.exchangeName} · Read/Trade Verified`;
+  return params.latencyMs != null ? `${base} · ${params.latencyMs}ms` : base;
+}
+
 export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   const isLoggedIn = useGetIsLoggedIn();
   const account = useGetAccount();
@@ -40,10 +50,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [lastVerifiedLabel, setLastVerifiedLabel] = useState<string | null>(
-    null,
-  );
+  const [latencyById, setLatencyById] = useState<Record<string, number>>({});
   const pickerRef = useRef<HTMLDivElement | null>(null);
+  const savingRef = useRef(false);
 
   const selectedExchange = getExchangeById(exchangeId) ?? EXCHANGE_CATALOG[0]!;
   const busy = phase === "verifying";
@@ -57,10 +66,17 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
       const json = (await res.json()) as {
         ok?: boolean;
         connections?: Connection[];
+        error?: string;
       };
-      if (res.ok) setConnections(json.connections ?? []);
-    } catch {
-      // non-blocking
+      if (!res.ok) {
+        setError(json.error ?? "Failed to load saved connections");
+        return;
+      }
+      setConnections(json.connections ?? []);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load saved connections",
+      );
     }
   }, []);
 
@@ -69,6 +85,8 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
       setPickerOpen(false);
       setPhase("idle");
       setVerifyStep("");
+      setError(null);
+      savingRef.current = false;
       return;
     }
     if (isLoggedIn && account.address) {
@@ -96,9 +114,19 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
     };
   }, [pickerOpen]);
 
+  const handleConnectWallet = () => {
+    // Dismiss this overlay first so MultiversX unlock is reachable.
+    onClose();
+    openConnect();
+  };
+
   const handleSave = async () => {
+    if (savingRef.current || busy) return;
+
     if (!isLoggedIn || !account.address) {
-      openConnect();
+      setPhase("error");
+      setFlash(null);
+      setError("Connect your MultiversX wallet to save exchange API keys.");
       return;
     }
 
@@ -117,16 +145,11 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
       return;
     }
 
+    savingRef.current = true;
     setPhase("verifying");
     setError(null);
     setFlash(null);
-    setVerifyStep("Encrypting credentials locally…");
-
-    const stepTimer = window.setTimeout(() => {
-      setVerifyStep(
-        `Verifying API keys & HMAC signatures · ${selectedExchange.endpointLabel}…`,
-      );
-    }, 420);
+    setVerifyStep(VERIFY_BUTTON_LABEL);
 
     try {
       const res = await fetch("/api/exchanges/keys", {
@@ -139,21 +162,46 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
           apiSecret: secret,
         }),
       });
-      const json = (await res.json()) as {
+
+      let json: {
         ok?: boolean;
         error?: string;
         message?: string;
         scopes?: string;
         exchangeName?: string;
         latencyMs?: number;
-      };
-      if (!res.ok) throw new Error(json.error ?? "Connection failed");
+        connection?: Connection;
+      } = {};
+      try {
+        json = (await res.json()) as typeof json;
+      } catch {
+        throw new Error("Invalid response from exchange connector");
+      }
 
-      const label = `Connected · ${json.exchangeName ?? selectedExchange.name} · ${json.scopes ?? "Read/Trade Verified"}`;
-      setLastVerifiedLabel(label);
-      setFlash(
-        `${label}${json.latencyMs ? ` · ${json.latencyMs}ms` : ""}`,
-      );
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? "Connection failed");
+      }
+
+      const exchangeName = json.exchangeName ?? selectedExchange.name;
+      const latencyMs = json.latencyMs ?? 1500;
+      const badge = statusBadge({ exchangeName, latencyMs });
+
+      if (json.connection) {
+        setConnections((prev) => {
+          const next = prev.filter(
+            (c) =>
+              c.id !== json.connection!.id &&
+              c.exchangeId !== json.connection!.exchangeId,
+          );
+          return [json.connection!, ...next];
+        });
+        setLatencyById((prev) => ({
+          ...prev,
+          [json.connection!.id]: latencyMs,
+        }));
+      }
+
+      setFlash(badge);
       setPhase("success");
       setVerifyStep("");
       setApiKey("");
@@ -162,18 +210,20 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
     } catch (err) {
       setPhase("error");
       setVerifyStep("");
+      setFlash(null);
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      window.clearTimeout(stepTimer);
+      savingRef.current = false;
     }
   };
 
   const handleRevoke = async (connectionId: string) => {
-    if (!account.address) return;
+    if (!account.address || busy) return;
     setPhase("verifying");
     setVerifyStep("Revoking connection…");
+    setError(null);
     try {
-      await fetch("/api/exchanges/keys", {
+      const res = await fetch("/api/exchanges/keys", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -181,13 +231,22 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
           connectionId,
         }),
       });
-      await loadConnections(account.address);
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error ?? "Failed to revoke connection");
+      }
+      setConnections((prev) => prev.filter((c) => c.id !== connectionId));
+      setLatencyById((prev) => {
+        const next = { ...prev };
+        delete next[connectionId];
+        return next;
+      });
       setPhase("idle");
       setVerifyStep("");
       setFlash(null);
-    } catch {
+    } catch (err) {
       setPhase("error");
-      setError("Failed to revoke connection");
+      setError(err instanceof Error ? err.message : "Failed to revoke connection");
       setVerifyStep("");
     }
   };
@@ -244,6 +303,21 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
             </header>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+              {!isLoggedIn && (
+                <div className="rounded-xl border border-cyan/25 bg-cyan/10 px-3 py-3">
+                  <p className="font-mono text-[11px] leading-5 text-cyan">
+                    Wallet required to verify &amp; store exchange credentials.
+                  </p>
+                  <GlowButton
+                    variant="cyan"
+                    className="mt-2 !px-3 !py-2 !text-[11px]"
+                    onClick={handleConnectWallet}
+                  >
+                    Connect Wallet
+                  </GlowButton>
+                </div>
+              )}
+
               <div ref={pickerRef} className="relative block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
                   Exchange
@@ -252,8 +326,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                   type="button"
                   aria-haspopup="listbox"
                   aria-expanded={pickerOpen}
+                  disabled={busy}
                   onClick={() => setPickerOpen((v) => !v)}
-                  className="mt-1.5 flex w-full items-center justify-between gap-3 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 text-left outline-none transition-colors hover:border-cyan/30 focus:border-cyan/40"
+                  className="mt-1.5 flex w-full items-center justify-between gap-3 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 text-left outline-none transition-colors hover:border-cyan/30 focus:border-cyan/40 disabled:opacity-60"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <ExchangeMark
@@ -305,10 +380,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                                   : "text-foreground hover:bg-white/[0.05]"
                               }`}
                             >
-                              <ExchangeMark
-                                exchangeId={ex.id}
-                                size={32}
-                              />
+                              <ExchangeMark exchangeId={ex.id} size={32} />
                               <span className="min-w-0">
                                 <span className="block font-display text-sm font-semibold">
                                   {ex.name}
@@ -338,6 +410,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                   type="text"
                   autoComplete="off"
                   spellCheck={false}
+                  disabled={busy}
                   value={apiKey}
                   onChange={(e) => {
                     setApiKey(e.target.value);
@@ -345,7 +418,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                     setError(null);
                   }}
                   placeholder="••••••••••••"
-                  className="mt-1.5 w-full rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40"
+                  className="mt-1.5 w-full rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40 disabled:opacity-60"
                 />
               </label>
 
@@ -358,6 +431,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                     type={showSecret ? "text" : "password"}
                     autoComplete="off"
                     spellCheck={false}
+                    disabled={busy}
                     value={apiSecret}
                     onChange={(e) => {
                       setApiSecret(e.target.value);
@@ -365,12 +439,13 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                       setError(null);
                     }}
                     placeholder="••••••••••••"
-                    className="min-w-0 flex-1 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40"
+                    className="min-w-0 flex-1 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40 disabled:opacity-60"
                   />
                   <button
                     type="button"
+                    disabled={busy}
                     onClick={() => setShowSecret((v) => !v)}
-                    className="shrink-0 rounded-xl border border-white/12 px-3 font-mono text-[10px] uppercase tracking-wider text-muted hover:text-cyan"
+                    className="shrink-0 rounded-xl border border-white/12 px-3 font-mono text-[10px] uppercase tracking-wider text-muted hover:text-cyan disabled:opacity-60"
                   >
                     {showSecret ? "Hide" : "Show"}
                   </button>
@@ -390,21 +465,35 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
               )}
 
               {error && (
-                <p className="font-mono text-[11px] font-medium text-loss">
-                  {error}
-                </p>
+                <div className="rounded-xl border border-loss/35 bg-loss/10 px-3 py-2.5">
+                  <p className="font-mono text-[11px] font-medium leading-5 text-loss">
+                    {error}
+                  </p>
+                  {!isLoggedIn && (
+                    <GlowButton
+                      variant="ghost"
+                      className="mt-2 !px-3 !py-1.5 !text-[10px]"
+                      onClick={handleConnectWallet}
+                    >
+                      Connect Wallet
+                    </GlowButton>
+                  )}
+                </div>
               )}
+
               {flash && phase === "success" && (
-                <p className="font-mono text-[11px] font-medium text-profit">
-                  {flash}
-                </p>
+                <div className="rounded-xl border border-profit/35 bg-profit/10 px-3 py-2.5">
+                  <p className="font-mono text-[11px] font-medium leading-5 text-profit">
+                    {flash}
+                  </p>
+                </div>
               )}
 
               <GlowButton
                 variant="purple"
                 fullWidth
+                disabled={busy}
                 onClick={() => void handleSave()}
-                className={busy ? "pointer-events-none opacity-60" : ""}
               >
                 {busy ? (
                   <span className="inline-flex items-center gap-2">
@@ -412,7 +501,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                       className="inline-block h-3 w-3 animate-spin rounded-full border border-purple/30 border-t-purple"
                       aria-hidden
                     />
-                    Verifying…
+                    {VERIFY_BUTTON_LABEL}
                   </span>
                 ) : (
                   "Save & Test Connection"
@@ -431,11 +520,11 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                   )}
                   {connections.map((c) => {
                     const connected = c.status === "connected";
-                    const statusLine = connected
-                      ? lastVerifiedLabel &&
-                        lastVerifiedLabel.includes(c.exchangeName)
-                        ? lastVerifiedLabel
-                        : `Connected · ${c.exchangeName} · Read/Trade Verified`
+                    const badge = connected
+                      ? statusBadge({
+                          exchangeName: c.exchangeName,
+                          latencyMs: latencyById[c.id] ?? null,
+                        })
                       : c.status;
                     return (
                       <div
@@ -451,26 +540,25 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                             <p className="font-display text-sm font-semibold">
                               {c.exchangeName}
                             </p>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-muted">
+                            <p className="mt-0.5 font-mono text-[10px] text-muted">
                               {c.apiKeyHint}
-                              <span aria-hidden>·</span>
-                              {connected ? (
-                                <span className="inline-flex items-center gap-1.5 text-profit">
-                                  <span
-                                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-profit shadow-[0_0_8px_rgba(14,203,129,0.7)]"
-                                    aria-hidden
-                                  />
-                                  {statusLine}
-                                </span>
-                              ) : (
-                                <span className="text-loss">{c.status}</span>
-                              )}
                             </p>
+                            {connected ? (
+                              <p className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] font-medium text-profit">
+                                <span aria-hidden>🟢</span>
+                                {badge}
+                              </p>
+                            ) : (
+                              <p className="mt-1 font-mono text-[10px] text-loss">
+                                {c.status}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <GlowButton
                           variant="ghost"
                           className="!px-3 !py-1.5 !text-[10px]"
+                          disabled={busy}
                           onClick={() => void handleRevoke(c.id)}
                         >
                           Revoke

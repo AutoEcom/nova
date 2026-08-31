@@ -26,7 +26,15 @@ type Row = {
 };
 
 function db() {
-  return createServiceSupabaseClient();
+  try {
+    return createServiceSupabaseClient();
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? err.message
+        : "Supabase is not configured (missing service role key)",
+    );
+  }
 }
 
 function isBech32Address(address: string): boolean {
@@ -89,7 +97,7 @@ export function validateExchangeCredentials(params: {
 
 /**
  * Simulated encrypted handshake against the futures venue.
- * Validates format, then waits as if verifying HMAC-signed account ping.
+ * Validates format, then waits ~1.5s as if verifying HMAC-signed account ping.
  */
 export async function verifyExchangeHandshake(params: {
   exchangeId: string;
@@ -105,7 +113,7 @@ export async function verifyExchangeHandshake(params: {
   const check = validateExchangeCredentials(params);
   if (!check.ok) return check;
 
-  const latencyMs = 780 + Math.floor(Math.random() * 640);
+  const latencyMs = 1500;
   await new Promise((r) => setTimeout(r, latencyMs));
 
   return {
@@ -131,7 +139,14 @@ export async function listExchangeConnections(
     .neq("status", "revoked")
     .order("updated_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (/Could not find the table|relation .* does not exist/i.test(error.message)) {
+      throw new Error(
+        "exchange_api_keys table missing — run Supabase migration 003",
+      );
+    }
+    throw new Error(error.message);
+  }
   return ((data ?? []) as Row[]).map(rowToPublic);
 }
 
@@ -171,7 +186,16 @@ export async function upsertExchangeConnection(params: {
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? "Failed to save exchange connection");
+    const msg = error?.message ?? "Failed to save exchange connection";
+    if (/Could not find the table|relation .* does not exist/i.test(msg)) {
+      throw new Error(
+        "exchange_api_keys table missing — run Supabase migration 003",
+      );
+    }
+    if (/duplicate key|unique/i.test(msg)) {
+      throw new Error("A connection for this exchange already exists");
+    }
+    throw new Error(msg);
   }
   return rowToPublic(data as Row);
 }

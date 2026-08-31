@@ -229,3 +229,14 @@ dd,
 .animate-pulse-glow {
   animation: pulse-glow 2.8s ease-in-out infinite;
 }
+
+/*
+ * MultiversX unlock panel defaults to z-50 inside the host.
+ * Raise the host above fullscreen terminal (z-90) and API settings (z-95)
+ * so wallet connect is never trapped under those overlays.
+ */
+mvx-unlock-panel {
+  position: fixed !important;
+  inset: 0;
+  z-index: 200 !important;
+}
