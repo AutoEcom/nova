@@ -657,27 +657,28 @@ export function AgentTerminalModal({
                 </div>
               </header>
 
-              {/* Actions strip — mode + capital + backtest range + controls */}
+              {/* Actions strip — aligned control row (mode · capital · period · strategy · run) */}
               <div
                 ref={backtestFocusRef}
-                className={`shrink-0 border-b px-4 py-2.5 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
+                className={`shrink-0 border-b px-3 py-3 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
                   backtestHighlight
                     ? "border-cyan/45 bg-cyan/[0.07] shadow-[inset_0_0_28px_rgba(0,240,255,0.1)]"
                     : "border-white/10 bg-black/35"
                 }`}
               >
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-                    <div>
-                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {/* Execution Mode */}
+                    <div className="flex min-w-0 flex-col">
+                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
                         Execution Mode
                       </p>
-                      <div className="mt-1.5 inline-flex overflow-hidden rounded-xl border border-cyan/30 bg-void/70">
+                      <div className="mt-1.5 inline-flex h-10 w-full overflow-hidden rounded-xl border border-cyan/30 bg-void/70 sm:w-auto">
                         <button
                           type="button"
                           disabled={isLive}
                           onClick={switchToDryRun}
-                          className={`px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`flex h-full flex-1 items-center justify-center px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none ${
                             executionMode === "dry_run"
                               ? "bg-cyan/20 text-cyan shadow-[inset_0_0_18px_rgba(0,240,255,0.12)]"
                               : "text-muted hover:bg-white/5 hover:text-foreground"
@@ -689,7 +690,7 @@ export function AgentTerminalModal({
                           type="button"
                           disabled={checkingKeys || isLive}
                           onClick={() => void requestLiveMode()}
-                          className={`border-l border-white/10 px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          className={`flex h-full flex-1 items-center justify-center border-l border-white/10 px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${
                             executionMode === "live"
                               ? "bg-green/20 text-green shadow-[inset_0_0_18px_rgba(14,203,129,0.14)]"
                               : "text-muted hover:bg-white/5 hover:text-foreground"
@@ -698,21 +699,20 @@ export function AgentTerminalModal({
                           {checkingKeys ? "…" : "Live"}
                         </button>
                       </div>
-                      {isLive && (
-                        <p className="mt-1 font-mono text-[9px] text-muted">
-                          Stop agent to change mode
-                        </p>
-                      )}
+                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                        {isLive ? "Stop agent to change mode" : "\u00a0"}
+                      </p>
                     </div>
 
-                    <div className="min-w-[160px] max-w-xs flex-1">
+                    {/* Capital Allocation */}
+                    <div className="flex min-w-0 flex-col">
                       <label
                         htmlFor="capital-allocation"
-                        className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted"
+                        className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted"
                       >
                         Capital Allocation (USD)
                       </label>
-                      <div className="relative mt-1.5">
+                      <div className="relative mt-1.5 h-10">
                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] text-muted">
                           $
                         </span>
@@ -727,61 +727,90 @@ export function AgentTerminalModal({
                             setCapitalInput(e.target.value);
                             setCapitalError(null);
                           }}
-                          className="w-full rounded-xl border border-cyan/25 bg-void/80 py-2 pl-7 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-cyan/50"
+                          className="h-10 w-full rounded-xl border border-cyan/25 bg-void/80 py-0 pl-7 pr-3 font-mono text-[12px] leading-10 text-foreground outline-none focus:border-cyan/50"
                         />
                       </div>
                       <p
-                        className={`mt-1 font-mono text-[9px] ${
+                        className={`mt-1 min-h-4 font-mono text-[9px] leading-4 ${
                           capitalError ? "text-magenta" : "text-muted"
                         }`}
                       >
                         {capitalError ??
-                          `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · required for Start & Backtest`}
+                          `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · Start & Backtest`}
                       </p>
                     </div>
 
-                    <div>
-                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                    {/* Backtest Period */}
+                    <div className="flex min-w-0 flex-col sm:col-span-2 lg:col-span-1">
+                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
                         Backtest Period
                       </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <div className="mt-1.5 flex h-10 items-center gap-1.5 sm:gap-2">
                         <label className="sr-only" htmlFor="backtest-from">
                           From
                         </label>
-                        <input
-                          id="backtest-from"
-                          type="date"
-                          value={backtestFrom}
-                          onChange={(e) => setBacktestFrom(e.target.value)}
-                          className="rounded-xl border border-white/12 bg-void/80 px-2.5 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
-                        />
-                        <span className="font-mono text-[10px] text-muted">→</span>
+                        <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
+                          <input
+                            id="backtest-from"
+                            type="date"
+                            value={backtestFrom}
+                            onChange={(e) => setBacktestFrom(e.target.value)}
+                            className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                          />
+                          <span
+                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
+                            aria-hidden
+                          >
+                            <DateChevron />
+                          </span>
+                        </div>
+                        <span className="shrink-0 font-mono text-[10px] text-muted">
+                          →
+                        </span>
                         <label className="sr-only" htmlFor="backtest-to">
                           To
                         </label>
-                        <input
-                          id="backtest-to"
-                          type="date"
-                          value={backtestTo}
-                          onChange={(e) => setBacktestTo(e.target.value)}
-                          className="rounded-xl border border-white/12 bg-void/80 px-2.5 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
-                        />
+                        <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
+                          <input
+                            id="backtest-to"
+                            type="date"
+                            value={backtestTo}
+                            onChange={(e) => setBacktestTo(e.target.value)}
+                            className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                          />
+                          <span
+                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
+                            aria-hidden
+                          >
+                            <DateChevron />
+                          </span>
+                        </div>
                       </div>
+                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                        From → to · historical simulation
+                      </p>
                     </div>
 
-                    <div className="pb-0.5">
-                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                    {/* Bound Strategy */}
+                    <div className="flex min-w-0 flex-col">
+                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
                         Bound Strategy
                       </p>
-                      <p className="mt-0.5 font-mono text-[11px] text-cyan">
-                        {boundStrategy?.name ?? strategyId}
-                      </p>
-                      <p className="mt-0.5 max-w-xs truncate font-mono text-[9px] text-muted">
-                        {boundStrategy?.blurb ?? "Dedicated agent workspace"}
+                      <div className="mt-1.5 flex h-10 min-w-0 flex-col justify-center rounded-xl border border-white/10 bg-void/60 px-3">
+                        <p className="truncate font-mono text-[11px] leading-tight text-cyan">
+                          {boundStrategy?.name ?? strategyId}
+                        </p>
+                        <p className="truncate font-mono text-[9px] leading-tight text-muted">
+                          {boundStrategy?.blurb ?? "Dedicated agent workspace"}
+                        </p>
+                      </div>
+                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                        &nbsp;
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+
+                  <div className="flex h-10 shrink-0 flex-wrap items-center gap-2 xl:mb-[1.25rem]">
                     <AgentRunToggle
                       isLive={isLive}
                       busy={actionBusy !== null}
@@ -791,7 +820,7 @@ export function AgentTerminalModal({
                     />
                     <GlowButton
                       variant={backtestHighlight ? "cyan" : "ghost"}
-                      className={`!px-3 !py-2 !text-[11px] ${
+                      className={`!h-10 !px-3 !py-0 !text-[11px] ${
                         backtestBusy ? "pointer-events-none opacity-60" : ""
                       } ${
                         backtestHighlight
@@ -1226,6 +1255,21 @@ export function AgentTerminalModal({
   );
 }
 
+function DateChevron() {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      className="h-3 w-3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden
+    >
+      <path d="M2.5 4.25 6 7.75l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ModeBadge({ mode }: { mode: ExecutionMode }) {
   const live = mode === "live";
   return (
@@ -1284,12 +1328,12 @@ function AgentRunToggle({
   onStop: () => void;
 }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-xl border border-white/12 bg-void/60">
+    <div className="inline-flex h-10 overflow-hidden rounded-xl border border-white/12 bg-void/60">
       <button
         type="button"
         disabled={busy || isLive}
         onClick={onStart}
-        className={`px-3 py-2 font-mono text-[11px] uppercase tracking-wider transition ${
+        className={`flex h-full items-center px-3 font-mono text-[11px] uppercase tracking-wider transition ${
           isLive
             ? mode === "live"
               ? "bg-green/15 text-green"
@@ -1307,7 +1351,7 @@ function AgentRunToggle({
         type="button"
         disabled={busy || !isLive}
         onClick={onStop}
-        className={`border-l border-white/10 px-3 py-2 font-mono text-[11px] uppercase tracking-wider transition ${
+        className={`flex h-full items-center border-l border-white/10 px-3 font-mono text-[11px] uppercase tracking-wider transition ${
           !isLive
             ? "bg-white/[0.03] text-muted"
             : "text-muted hover:bg-magenta/10 hover:text-magenta"

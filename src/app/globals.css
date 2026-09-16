@@ -158,6 +158,31 @@ dd,
   }
 }
 
+/*
+ * Terminal date inputs — keep native calendar affordance visible and
+ * leave room for the decorative chevron on the right.
+ */
+.terminal-date-input {
+  color-scheme: dark;
+}
+.terminal-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.terminal-date-input::-webkit-datetime-edit {
+  padding: 0;
+}
+.terminal-date-wrap:focus-within {
+  outline: none;
+}
+.terminal-date-wrap:focus-within .terminal-date-input {
+  border-color: rgba(0, 240, 255, 0.4);
+}
+
 .text-glow-cyan {
   text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
 }

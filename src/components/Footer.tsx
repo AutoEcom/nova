@@ -1,37 +1,76 @@
 "use client";
 
 import Link from "next/link";
-import { SITE_NAV_LINKS } from "@/config/siteNav";
+import { SITE_FOOTER_LINKS } from "@/config/siteNav";
 import { EXPLORER_URL, NOVA_TOKEN_ID, TREASURY_ADDRESS } from "@/config/network";
+
+/** Official X logo (Wikimedia: X_logo_2023.svg) — monochrome via currentColor. */
+function IconX({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 300 271"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
+      <path
+        fill="currentColor"
+        d="m236 0h46l-101 115 118 156h-92.6l-72.5-94.8-83 94.8h-46l107-123-113-148h94.9l65.5 86.6zm-16.1 244h25.5l-165-218h-27.4z"
+      />
+    </svg>
+  );
+}
+
+/** Official Telegram logo (Wikimedia: Telegram_logo.svg). */
+function IconTelegram({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 240 240"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
+      <defs>
+        <linearGradient
+          id="evolgo-tg-grad"
+          x1="120"
+          y1="240"
+          x2="120"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#1d93d2" />
+          <stop offset="1" stopColor="#38b0e3" />
+        </linearGradient>
+      </defs>
+      <circle cx="120" cy="120" r="120" fill="url(#evolgo-tg-grad)" />
+      <path
+        d="M81.229,128.772l14.237,39.406s1.78,3.687,3.686,3.687,30.255-29.492,30.255-29.492l31.525-60.89L81.737,118.6Z"
+        fill="#c8daea"
+      />
+      <path
+        d="M100.106,138.878l-2.733,29.046s-1.144,8.9,7.754,0,17.415-15.763,17.415-15.763"
+        fill="#a9c6d8"
+      />
+      <path
+        d="M81.486,130.178,52.2,120.636s-3.5-1.42-2.373-4.64c.232-.664.7-1.229,2.1-2.2,6.489-4.523,120.106-45.36,120.106-45.36s3.208-1.081,5.1-.362a2.766,2.766,0,0,1,1.885,2.055,9.357,9.357,0,0,1,.254,2.585c-.009.752-.1,1.449-.169,2.542-.692,11.165-21.4,94.493-21.4,94.493s-1.239,4.876-5.678,5.043A8.13,8.13,0,0,1,146.1,172.5c-8.711-7.493-38.819-27.727-45.472-32.177a1.27,1.27,0,0,1-.546-.9c-.093-.469.417-1.05.417-1.05s52.426-46.6,53.821-51.492c.108-.379-.3-.566-.848-.4-3.482,1.281-63.844,39.4-70.506,43.607A3.21,3.21,0,0,1,81.486,130.178Z"
+        fill="#fff"
+      />
+    </svg>
+  );
+}
 
 const socials = [
   {
     name: "X",
     href: "https://x.com/evolgoapp",
     label: "Follow EVOLGO on X",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        className="block h-4 w-4 shrink-0 fill-current"
-        aria-hidden
-      >
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.727-8.839L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
-      </svg>
-    ),
+    icon: <IconX className="block h-4 w-4 shrink-0" />,
   },
   {
     name: "Telegram",
     href: "https://t.me/evolgoapp",
     label: "Join EVOLGO on Telegram",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        className="block h-4 w-4 shrink-0 fill-current"
-        aria-hidden
-      >
-        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.458.02.889-.15 1.562-.788 5.36-.788 5.36s-.062.246-.288.255c-.143.006-.33-.056-.33-.056l-1.86-1.22-1.01.97a.35.35 0 0 1-.26.107l.14-1.98 3.62-3.27c.16-.14-.035-.217-.247-.08l-4.47 2.81-1.93-.6s-.3-.094-.31-.3c-.01-.17.16-.26.16-.26l7.52-2.9z" />
-      </svg>
-    ),
+    icon: <IconTelegram className="block h-4 w-4 shrink-0" />,
   },
 ];
 
@@ -125,7 +164,7 @@ export function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={s.label}
-                  className="glass inline-flex items-center gap-2 rounded-xl px-3 py-2 text-foreground transition-all hover:border-cyan/40 hover:text-cyan touch-manipulation"
+                  className="glass inline-flex items-center gap-2 rounded-xl px-3 py-2 text-foreground transition-all hover:border-cyan/40 hover:text-cyan hover:shadow-[0_0_16px_rgba(0,240,255,0.18)] touch-manipulation [&_svg]:transition-transform hover:[&_svg]:scale-105"
                 >
                   {s.icon}
                   <span className="font-mono text-[10px] uppercase tracking-wider">
@@ -142,7 +181,7 @@ export function Footer() {
               Protocol
             </p>
             <ul className="mt-4 space-y-2.5">
-              {SITE_NAV_LINKS.map((link) => (
+              {SITE_FOOTER_LINKS.map((link) => (
                 <li key={link.href}>
                   <FooterLink href={link.href} label={link.label} />
                 </li>

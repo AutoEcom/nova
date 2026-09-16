@@ -48,11 +48,11 @@ export function DashboardShell({ children }: DashboardShellProps) {
       )}
 
       <div className="min-w-0 flex-1">
-        {!fullWidth && (
-          <div className="mb-4 md:hidden">
-            <DashboardNav orientation="horizontal" />
-          </div>
-        )}
+        {/* Always show on small screens — Agents is full-width (no sidebar)
+            but still needs the module strip for Staking / Referrals / Overview. */}
+        <div className="mb-4 md:hidden">
+          <DashboardNav orientation="horizontal" />
+        </div>
         <main className="min-w-0">{children}</main>
       </div>
     </div>
