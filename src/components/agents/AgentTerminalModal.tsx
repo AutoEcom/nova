@@ -180,6 +180,8 @@ export function AgentTerminalModal({
   const [actionBusy, setActionBusy] = useState<"start" | "stop" | null>(null);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [backtestHighlight, setBacktestHighlight] = useState(false);
+  /** Mobile-only: full control grid collapsed by default to free chart / log space. */
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [toast, setToast] = useState<{
     tone: "ok" | "err";
     text: string;
@@ -187,6 +189,8 @@ export function AgentTerminalModal({
   const pollFailRef = useRef(0);
   const logIdRef = useRef(0);
   const backtestFocusRef = useRef<HTMLDivElement | null>(null);
+  const logStreamRef = useRef<HTMLDivElement | null>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const pushLog = useCallback((kind: LogKind, message: string) => {
     logIdRef.current += 1;
@@ -202,6 +206,24 @@ export function AgentTerminalModal({
       ].slice(-48),
     );
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 47.99rem)");
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  /** Mobile shows a short tail; desktop keeps the full stream. */
+  const visibleLogs = isMobileViewport ? logs.slice(-4) : logs;
+
+  useEffect(() => {
+    const el = logStreamRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [visibleLogs]);
 
   const applyMetrics = useCallback((next: TerminalMetrics) => {
     setMetrics(next);
@@ -248,6 +270,7 @@ export function AgentTerminalModal({
       setBacktestHighlight(false);
       return;
     }
+    setMobileControlsOpen(true);
     setBacktestHighlight(true);
     const scrollId = window.setTimeout(() => {
       backtestFocusRef.current?.scrollIntoView({
@@ -268,6 +291,7 @@ export function AgentTerminalModal({
     setExecutionMode("dry_run");
     setLiveConfirmOpen(false);
     setKeysGateOpen(false);
+    setMobileControlsOpen(false);
     setPeriod("30D");
     setBacktestFrom(range.from);
     setBacktestTo(range.to);
@@ -446,6 +470,7 @@ export function AgentTerminalModal({
     if (!agent || actionBusy) return;
     const capital = validateCapital();
     if (capital === null) {
+      setMobileControlsOpen(true);
       pushLog(
         "warn",
         `CAPITAL REJECTED · minimum $${MIN_CAPITAL_ALLOCATION_USD} USD required`,
@@ -481,6 +506,7 @@ export function AgentTerminalModal({
         "exec",
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
       );
+      setMobileControlsOpen(false);
       setToast({
         tone: "ok",
         text:
@@ -521,6 +547,7 @@ export function AgentTerminalModal({
     if (!agent || backtestBusy) return;
     const capital = validateCapital();
     if (capital === null) {
+      setMobileControlsOpen(true);
       pushLog(
         "warn",
         `BACKTEST BLOCKED · allocate at least $${MIN_CAPITAL_ALLOCATION_USD} USD`,
@@ -532,6 +559,7 @@ export function AgentTerminalModal({
       return;
     }
     if (!backtestFrom || !backtestTo || backtestFrom > backtestTo) {
+      setMobileControlsOpen(true);
       pushLog("warn", "BACKTEST BLOCKED · invalid date range (from ≤ to)");
       setToast({ tone: "err", text: "Pick a valid backtest date range" });
       return;
@@ -590,12 +618,12 @@ export function AgentTerminalModal({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="relative flex h-full w-full flex-col overflow-hidden border-0 bg-[#070a12]"
+              className="agent-terminal relative flex h-full w-full flex-col overflow-hidden border-0 bg-[#070a12]"
             >
               <header className="shrink-0 border-b border-white/10 bg-black/50">
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="terminal-header-meta flex flex-wrap items-center gap-2">
                       <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-cyan">
                         Evolgo Command Center · Fullscreen
                       </p>
@@ -624,7 +652,7 @@ export function AgentTerminalModal({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="terminal-header-chips flex flex-wrap items-center gap-2">
                     <TelemetryChip
                       label="Latency"
                       value={metrics ? `${latencyMs}ms` : "—"}
@@ -654,196 +682,271 @@ export function AgentTerminalModal({
                       Close
                     </GlowButton>
                   </div>
+
+                  {/* Mobile: essential actions only — frees vertical space */}
+                  <div className="terminal-mobile-header-actions flex w-full items-center gap-2">
+                    <GlowButton
+                      variant="purple"
+                      className="!flex-1 !px-3 !py-2.5 !text-[11px]"
+                      onClick={() => setExchangeOpen(true)}
+                    >
+                      Exchange / API
+                    </GlowButton>
+                    <GlowButton
+                      variant="ghost"
+                      className="!px-3 !py-2.5 !text-[11px]"
+                      onClick={onClose}
+                    >
+                      Close
+                    </GlowButton>
+                  </div>
                 </div>
               </header>
 
-              {/* Actions strip — aligned control row (mode · capital · period · strategy · run) */}
+              {/* Actions strip — mobile compact toggle; desktop always expanded */}
               <div
                 ref={backtestFocusRef}
-                className={`shrink-0 border-b px-3 py-3 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
+                className={`shrink-0 border-b transition-[border-color,box-shadow,background-color] duration-500 ${
                   backtestHighlight
                     ? "border-cyan/45 bg-cyan/[0.07] shadow-[inset_0_0_28px_rgba(0,240,255,0.1)]"
                     : "border-white/10 bg-black/35"
                 }`}
               >
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                  <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {/* Execution Mode */}
-                    <div className="flex min-w-0 flex-col">
-                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
-                        Execution Mode
-                      </p>
-                      <div className="mt-1.5 inline-flex h-10 w-full overflow-hidden rounded-xl border border-cyan/30 bg-void/70 sm:w-auto">
-                        <button
-                          type="button"
-                          disabled={isLive}
-                          onClick={switchToDryRun}
-                          className={`flex h-full flex-1 items-center justify-center px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none ${
-                            executionMode === "dry_run"
-                              ? "bg-cyan/20 text-cyan shadow-[inset_0_0_18px_rgba(0,240,255,0.12)]"
-                              : "text-muted hover:bg-white/5 hover:text-foreground"
-                          }`}
-                        >
-                          Dry Run
-                        </button>
-                        <button
-                          type="button"
-                          disabled={checkingKeys || isLive}
-                          onClick={() => void requestLiveMode()}
-                          className={`flex h-full flex-1 items-center justify-center border-l border-white/10 px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${
-                            executionMode === "live"
-                              ? "bg-green/20 text-green shadow-[inset_0_0_18px_rgba(14,203,129,0.14)]"
-                              : "text-muted hover:bg-white/5 hover:text-foreground"
-                          }`}
-                        >
-                          {checkingKeys ? "…" : "Live"}
-                        </button>
-                      </div>
-                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
-                        {isLive ? "Stop agent to change mode" : "\u00a0"}
-                      </p>
-                    </div>
-
-                    {/* Capital Allocation */}
-                    <div className="flex min-w-0 flex-col">
-                      <label
-                        htmlFor="capital-allocation"
-                        className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted"
-                      >
-                        Capital Allocation (USD)
-                      </label>
-                      <div className="relative mt-1.5 h-10">
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] text-muted">
-                          $
-                        </span>
-                        <input
-                          id="capital-allocation"
-                          type="number"
-                          min={MIN_CAPITAL_ALLOCATION_USD}
-                          step="50"
-                          inputMode="decimal"
-                          value={capitalInput}
-                          onChange={(e) => {
-                            setCapitalInput(e.target.value);
-                            setCapitalError(null);
-                          }}
-                          className="h-10 w-full rounded-xl border border-cyan/25 bg-void/80 py-0 pl-7 pr-3 font-mono text-[12px] leading-10 text-foreground outline-none focus:border-cyan/50"
-                        />
-                      </div>
-                      <p
-                        className={`mt-1 min-h-4 font-mono text-[9px] leading-4 ${
-                          capitalError ? "text-magenta" : "text-muted"
-                        }`}
-                      >
-                        {capitalError ??
-                          `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · Start & Backtest`}
-                      </p>
-                    </div>
-
-                    {/* Backtest Period */}
-                    <div className="flex min-w-0 flex-col sm:col-span-2 lg:col-span-1">
-                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
-                        Backtest Period
-                      </p>
-                      <div className="mt-1.5 flex h-10 items-center gap-1.5 sm:gap-2">
-                        <label className="sr-only" htmlFor="backtest-from">
-                          From
-                        </label>
-                        <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
-                          <input
-                            id="backtest-from"
-                            type="date"
-                            value={backtestFrom}
-                            onChange={(e) => setBacktestFrom(e.target.value)}
-                            className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
-                          />
-                          <span
-                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
-                            aria-hidden
-                          >
-                            <DateChevron />
-                          </span>
-                        </div>
-                        <span className="shrink-0 font-mono text-[10px] text-muted">
-                          →
-                        </span>
-                        <label className="sr-only" htmlFor="backtest-to">
-                          To
-                        </label>
-                        <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
-                          <input
-                            id="backtest-to"
-                            type="date"
-                            value={backtestTo}
-                            onChange={(e) => setBacktestTo(e.target.value)}
-                            className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
-                          />
-                          <span
-                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
-                            aria-hidden
-                          >
-                            <DateChevron />
-                          </span>
-                        </div>
-                      </div>
-                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
-                        From → to · historical simulation
-                      </p>
-                    </div>
-
-                    {/* Bound Strategy */}
-                    <div className="flex min-w-0 flex-col">
-                      <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
-                        Bound Strategy
-                      </p>
-                      <div className="mt-1.5 flex h-10 min-w-0 flex-col justify-center rounded-xl border border-white/10 bg-void/60 px-3">
-                        <p className="truncate font-mono text-[11px] leading-tight text-cyan">
-                          {boundStrategy?.name ?? strategyId}
-                        </p>
-                        <p className="truncate font-mono text-[9px] leading-tight text-muted">
-                          {boundStrategy?.blurb ?? "Dedicated agent workspace"}
-                        </p>
-                      </div>
-                      <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
-                        &nbsp;
-                      </p>
-                    </div>
+                <div className="terminal-mobile-bar items-center gap-2 px-3 py-2">
+                  <button
+                    type="button"
+                    aria-expanded={mobileControlsOpen}
+                    aria-controls="terminal-controls-panel"
+                    onClick={() => setMobileControlsOpen((v) => !v)}
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-cyan/30 bg-cyan/10 px-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-cyan touch-manipulation"
+                  >
+                    Settings
+                    <span
+                      className={`inline-flex transition-transform duration-200 ${
+                        mobileControlsOpen ? "rotate-180" : ""
+                      }`}
+                    >
+                      <DateChevron />
+                    </span>
+                  </button>
+                  <div className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted">
+                    <span
+                      className={
+                        executionMode === "live" ? "text-green" : "text-cyan"
+                      }
+                    >
+                      {executionMode === "live" ? "Live" : "Dry Run"}
+                    </span>
+                    <span className="text-white/25"> · </span>
+                    <span className="text-foreground/80">
+                      ${capitalInput || "—"}
+                    </span>
                   </div>
-
-                  <div className="flex h-10 shrink-0 flex-wrap items-center gap-2 xl:mb-[1.25rem]">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <AgentRunToggle
                       isLive={isLive}
                       busy={actionBusy !== null}
                       mode={executionMode}
+                      compact
                       onStart={() => void handleStart()}
                       onStop={() => void handleStop()}
                     />
                     <GlowButton
                       variant={backtestHighlight ? "cyan" : "ghost"}
-                      className={`!h-10 !px-3 !py-0 !text-[11px] ${
+                      className={`!h-9 !px-2.5 !py-0 !text-[10px] ${
                         backtestBusy ? "pointer-events-none opacity-60" : ""
-                      } ${
-                        backtestHighlight
-                          ? "ring-2 ring-cyan/50 ring-offset-2 ring-offset-[#070a12]"
-                          : ""
                       }`}
-                      onClick={() => void handleBacktest()}
+                      onClick={() => {
+                        if (!mobileControlsOpen) setMobileControlsOpen(true);
+                        void handleBacktest();
+                      }}
                     >
-                      {backtestBusy ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Spinner />
-                          Running…
-                        </span>
-                      ) : (
-                        "Run Backtest"
-                      )}
+                      {backtestBusy ? <Spinner /> : "BT"}
                     </GlowButton>
+                  </div>
+                </div>
+
+                <div
+                  id="terminal-controls-panel"
+                  className={`terminal-controls-panel px-3 pb-3 pt-2 sm:px-5 md:pt-3 ${
+                    mobileControlsOpen ? "is-open" : ""
+                  }`}
+                >
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
+                          Execution Mode
+                        </p>
+                        <div className="mt-1.5 inline-flex h-10 w-full overflow-hidden rounded-xl border border-cyan/30 bg-void/70 sm:w-auto">
+                          <button
+                            type="button"
+                            disabled={isLive}
+                            onClick={switchToDryRun}
+                            className={`flex h-full flex-1 items-center justify-center px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none ${
+                              executionMode === "dry_run"
+                                ? "bg-cyan/20 text-cyan shadow-[inset_0_0_18px_rgba(0,240,255,0.12)]"
+                                : "text-muted hover:bg-white/5 hover:text-foreground"
+                            }`}
+                          >
+                            Dry Run
+                          </button>
+                          <button
+                            type="button"
+                            disabled={checkingKeys || isLive}
+                            onClick={() => void requestLiveMode()}
+                            className={`flex h-full flex-1 items-center justify-center border-l border-white/10 px-4 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${
+                              executionMode === "live"
+                                ? "bg-green/20 text-green shadow-[inset_0_0_18px_rgba(14,203,129,0.14)]"
+                                : "text-muted hover:bg-white/5 hover:text-foreground"
+                            }`}
+                          >
+                            {checkingKeys ? "…" : "Live"}
+                          </button>
+                        </div>
+                        <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                          {isLive ? "Stop agent to change mode" : "\u00a0"}
+                        </p>
+                      </div>
+
+                      <div className="flex min-w-0 flex-col">
+                        <label
+                          htmlFor="capital-allocation"
+                          className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted"
+                        >
+                          Capital Allocation (USD)
+                        </label>
+                        <div className="relative mt-1.5 h-10">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] text-muted">
+                            $
+                          </span>
+                          <input
+                            id="capital-allocation"
+                            type="number"
+                            min={MIN_CAPITAL_ALLOCATION_USD}
+                            step="50"
+                            inputMode="decimal"
+                            value={capitalInput}
+                            onChange={(e) => {
+                              setCapitalInput(e.target.value);
+                              setCapitalError(null);
+                            }}
+                            className="h-10 w-full rounded-xl border border-cyan/25 bg-void/80 py-0 pl-7 pr-3 font-mono text-[12px] leading-10 text-foreground outline-none focus:border-cyan/50"
+                          />
+                        </div>
+                        <p
+                          className={`mt-1 min-h-4 font-mono text-[9px] leading-4 ${
+                            capitalError ? "text-magenta" : "text-muted"
+                          }`}
+                        >
+                          {capitalError ??
+                            `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · Start & Backtest`}
+                        </p>
+                      </div>
+
+                      <div className="flex min-w-0 flex-col sm:col-span-2 lg:col-span-1">
+                        <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
+                          Backtest Period
+                        </p>
+                        <div className="mt-1.5 flex h-10 items-center gap-1.5 sm:gap-2">
+                          <label className="sr-only" htmlFor="backtest-from">
+                            From
+                          </label>
+                          <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
+                            <input
+                              id="backtest-from"
+                              type="date"
+                              value={backtestFrom}
+                              onChange={(e) => setBacktestFrom(e.target.value)}
+                              className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                            />
+                            <span
+                              className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
+                              aria-hidden
+                            >
+                              <DateChevron />
+                            </span>
+                          </div>
+                          <span className="shrink-0 font-mono text-[10px] text-muted">
+                            →
+                          </span>
+                          <label className="sr-only" htmlFor="backtest-to">
+                            To
+                          </label>
+                          <div className="terminal-date-wrap relative h-10 min-w-0 flex-1">
+                            <input
+                              id="backtest-to"
+                              type="date"
+                              value={backtestTo}
+                              onChange={(e) => setBacktestTo(e.target.value)}
+                              className="terminal-date-input h-10 w-full min-w-0 rounded-xl border border-white/12 bg-void/80 pl-2.5 pr-8 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                            />
+                            <span
+                              className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-cyan/80"
+                              aria-hidden
+                            >
+                              <DateChevron />
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                          From → to · historical simulation
+                        </p>
+                      </div>
+
+                      <div className="flex min-w-0 flex-col">
+                        <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
+                          Bound Strategy
+                        </p>
+                        <div className="mt-1.5 flex h-10 min-w-0 flex-col justify-center rounded-xl border border-white/10 bg-void/60 px-3">
+                          <p className="truncate font-mono text-[11px] leading-tight text-cyan">
+                            {boundStrategy?.name ?? strategyId}
+                          </p>
+                          <p className="truncate font-mono text-[9px] leading-tight text-muted">
+                            {boundStrategy?.blurb ?? "Dedicated agent workspace"}
+                          </p>
+                        </div>
+                        <p className="mt-1 min-h-4 font-mono text-[9px] leading-4 text-muted">
+                          &nbsp;
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="terminal-controls-actions h-10 shrink-0 flex-wrap items-center gap-2 xl:mb-[1.25rem]">
+                      <AgentRunToggle
+                        isLive={isLive}
+                        busy={actionBusy !== null}
+                        mode={executionMode}
+                        onStart={() => void handleStart()}
+                        onStop={() => void handleStop()}
+                      />
+                      <GlowButton
+                        variant={backtestHighlight ? "cyan" : "ghost"}
+                        className={`!h-10 !px-3 !py-0 !text-[11px] ${
+                          backtestBusy ? "pointer-events-none opacity-60" : ""
+                        } ${
+                          backtestHighlight
+                            ? "ring-2 ring-cyan/50 ring-offset-2 ring-offset-[#070a12]"
+                            : ""
+                        }`}
+                        onClick={() => void handleBacktest()}
+                      >
+                        {backtestBusy ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Spinner />
+                            Running…
+                          </span>
+                        ) : (
+                          "Run Backtest"
+                        )}
+                      </GlowButton>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[1.65fr_0.85fr]">
-                <div className="min-h-0 space-y-3 overflow-y-auto border-b border-white/10 p-3 sm:p-4 xl:border-b-0 xl:border-r">
+              <div className="terminal-body grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[1.65fr_0.85fr]">
+                <div className="terminal-main-col min-h-0 space-y-3 overflow-y-auto border-b border-white/10 p-3 sm:p-4 xl:border-b-0 xl:border-r">
                   <section className="rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4">
                     <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
                       <div>
@@ -1053,21 +1156,25 @@ export function AgentTerminalModal({
                   </section>
                 </div>
 
-                <aside className="flex min-h-0 flex-col bg-black/30">
-                  <div className="flex items-center justify-between border-b border-white/8 px-3 py-2.5 sm:px-4">
+                <aside className="terminal-log-aside flex min-h-0 flex-col bg-black/30">
+                  <div className="flex items-center justify-between border-b border-white/8 px-3 py-2 sm:px-4 sm:py-2.5">
                     <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
                       Execution Log
                     </p>
                     <p className="font-mono text-[9px] text-muted">
                       stream · {executionMode === "live" ? "live" : "dry"} ·{" "}
                       {isLive ? "running" : "idle"}
+                      {isMobileViewport ? ` · last ${visibleLogs.length}` : ""}
                     </p>
                   </div>
-                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3 sm:px-4">
-                    {logs.map((entry) => (
+                  <div
+                    ref={logStreamRef}
+                    className="terminal-log-stream min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3 sm:px-4"
+                  >
+                    {visibleLogs.map((entry) => (
                       <div
                         key={entry.id}
-                        className="rounded-md border border-white/[0.04] bg-white/[0.02] px-2 py-1.5"
+                        className="terminal-log-entry rounded-md border border-white/[0.04] bg-white/[0.02] px-2 py-1.5"
                       >
                         <div className="flex items-center gap-2 font-mono text-[9px]">
                           <span className="text-muted/80">{entry.time}</span>
@@ -1085,7 +1192,7 @@ export function AgentTerminalModal({
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 border-t border-white/8 p-3 sm:grid-cols-4 sm:p-4">
+                  <div className="terminal-log-stats grid grid-cols-2 gap-2 border-t border-white/8 p-3 sm:grid-cols-4 sm:p-4">
                     <Stat label="Win Rate" value={`${agent.winRate}%`} />
                     <Stat
                       label="Max Drawdown"
@@ -1318,22 +1425,30 @@ function AgentRunToggle({
   isLive,
   busy,
   mode,
+  compact = false,
   onStart,
   onStop,
 }: {
   isLive: boolean;
   busy: boolean;
   mode: ExecutionMode;
+  compact?: boolean;
   onStart: () => void;
   onStop: () => void;
 }) {
   return (
-    <div className="inline-flex h-10 overflow-hidden rounded-xl border border-white/12 bg-void/60">
+    <div
+      className={`inline-flex overflow-hidden rounded-xl border border-white/12 bg-void/60 ${
+        compact ? "h-9" : "h-10"
+      }`}
+    >
       <button
         type="button"
         disabled={busy || isLive}
         onClick={onStart}
-        className={`flex h-full items-center px-3 font-mono text-[11px] uppercase tracking-wider transition ${
+        className={`flex h-full items-center font-mono uppercase tracking-wider transition ${
+          compact ? "px-2 text-[10px]" : "px-3 text-[11px]"
+        } ${
           isLive
             ? mode === "live"
               ? "bg-green/15 text-green"
@@ -1343,15 +1458,23 @@ function AgentRunToggle({
       >
         {busy && !isLive
           ? "…"
-          : mode === "live"
-            ? "Start Live"
-            : "Start Dry Run"}
+          : compact
+            ? isLive
+              ? "Run"
+              : mode === "live"
+                ? "Live"
+                : "Start"
+            : mode === "live"
+              ? "Start Live"
+              : "Start Dry Run"}
       </button>
       <button
         type="button"
         disabled={busy || !isLive}
         onClick={onStop}
-        className={`flex h-full items-center border-l border-white/10 px-3 font-mono text-[11px] uppercase tracking-wider transition ${
+        className={`flex h-full items-center border-l border-white/10 font-mono uppercase tracking-wider transition ${
+          compact ? "px-2 text-[10px]" : "px-3 text-[11px]"
+        } ${
           !isLive
             ? "bg-white/[0.03] text-muted"
             : "text-muted hover:bg-magenta/10 hover:text-magenta"
