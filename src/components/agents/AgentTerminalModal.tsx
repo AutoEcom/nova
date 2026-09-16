@@ -1,10 +1,23 @@
 "use client";
 
+/**
+ * ============================================================================
+ * AGENT TERMINAL — architectural UX (implemented)
+ * ============================================================================
+ * Modes: Dry Run (default on open) | Live | Backtest (separate action)
+ * Live switch → confirm + exchange API keys gate → Exchange / API modal if missing
+ * Capital allocation always user-selected (min $100)
+ * ============================================================================
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useGetAccount } from "@multiversx/sdk-dapp/out/react/account/useGetAccount";
+import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeApiModal } from "@/components/agents/ExchangeApiModal";
 import {
+  agentSubscriptionNovaAmount,
   formatMaxDrawdown,
   formatRiskScore,
   MIN_CAPITAL_ALLOCATION_USD,
@@ -23,6 +36,7 @@ import {
   type TerminalPosition,
   type TerminalStatus,
 } from "@/lib/agents/terminalApi";
+import { useWalletUI } from "@/providers/WalletUIProvider";
 
 type AgentTerminalModalProps = {
   open: boolean;
@@ -33,6 +47,7 @@ type AgentTerminalModalProps = {
   focusBacktest?: boolean;
 };
 
+type ExecutionMode = "dry_run" | "live";
 type ChartPeriod = "7D" | "14D" | "30D" | "90D" | "1Y";
 
 type LogKind = "exec" | "telemetry" | "risk" | "system" | "warn";
@@ -72,6 +87,17 @@ const LOG_TAG: Record<LogKind, string> = {
   system: "SYS",
   warn: "WARN",
 };
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultBacktestRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setUTCDate(from.getUTCDate() - 30);
+  return { from: isoDate(from), to: isoDate(to) };
+}
 
 function seriesForPeriod(
   agent: AgentDefinition,
@@ -128,8 +154,24 @@ export function AgentTerminalModal({
 }: AgentTerminalModalProps) {
   const strategyId = agent?.strategyId ?? "evolgo-consensus";
   const boundStrategy = getStrategyById(strategyId);
+  const isLoggedIn = useGetIsLoggedIn();
+  const account = useGetAccount();
+  const { openConnect } = useWalletUI();
+  const priceNova = agent
+    ? agent.freeAccess
+      ? null
+      : agentSubscriptionNovaAmount(agent)
+    : null;
 
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("dry_run");
+  const [liveConfirmOpen, setLiveConfirmOpen] = useState(false);
+  const [keysGateOpen, setKeysGateOpen] = useState(false);
+  const [checkingKeys, setCheckingKeys] = useState(false);
   const [period, setPeriod] = useState<ChartPeriod>("30D");
+  const [backtestFrom, setBacktestFrom] = useState(
+    () => defaultBacktestRange().from,
+  );
+  const [backtestTo, setBacktestTo] = useState(() => defaultBacktestRange().to);
   const [capitalInput, setCapitalInput] = useState(DEFAULT_CAPITAL);
   const [capitalError, setCapitalError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -184,6 +226,8 @@ export function AgentTerminalModal({
   useEffect(() => {
     if (!open) {
       setExchangeOpen(false);
+      setLiveConfirmOpen(false);
+      setKeysGateOpen(false);
       return;
     }
     const prev = document.body.style.overflow;
@@ -220,11 +264,21 @@ export function AgentTerminalModal({
 
   useEffect(() => {
     if (!open || !agent) return;
+    const range = defaultBacktestRange();
+    setExecutionMode("dry_run");
+    setLiveConfirmOpen(false);
+    setKeysGateOpen(false);
     setPeriod("30D");
+    setBacktestFrom(range.from);
+    setBacktestTo(range.to);
     setCapitalInput(DEFAULT_CAPITAL);
     setCapitalError(null);
     setMetrics(null);
     pollFailRef.current = 0;
+    const priceNote =
+      !agent.freeAccess && priceNova != null
+        ? ` · ${priceNova.toLocaleString()} $NOVA / mo orchestration`
+        : "";
     setLogs([
       {
         id: "boot-1",
@@ -247,13 +301,87 @@ export function AgentTerminalModal({
       {
         id: "boot-4",
         time: nowTime(),
+        kind: "system",
+        message: `MODE · DRY RUN (default)${priceNote}`,
+      },
+      {
+        id: "boot-5",
+        time: nowTime(),
         kind: agent.freeAccess ? "exec" : "system",
         message: agent.freeAccess
           ? "PUBLIC ACCESS GRANTED · capital allocation required before start"
           : "CLEARANCE VERIFIED · capital allocation required before start",
       },
     ]);
-  }, [open, agent, boundStrategy?.name, strategyId]);
+  }, [open, agent, boundStrategy?.name, strategyId, priceNova]);
+
+  const hasConnectedExchangeKeys = useCallback(async (): Promise<boolean> => {
+    if (!isLoggedIn || !account.address) return false;
+    try {
+      const res = await fetch(
+        `/api/exchanges/keys?address=${encodeURIComponent(account.address)}`,
+        { cache: "no-store" },
+      );
+      const json = (await res.json()) as {
+        ok?: boolean;
+        connections?: Array<{ status?: string }>;
+      };
+      if (!res.ok || !json.ok) return false;
+      return (json.connections ?? []).some((c) => c.status === "connected");
+    } catch {
+      return false;
+    }
+  }, [isLoggedIn, account.address]);
+
+  const requestLiveMode = useCallback(async () => {
+    if (executionMode === "live") return;
+    if (!isLoggedIn || !account.address) {
+      openConnect();
+      setToast({
+        tone: "err",
+        text: "Connect wallet before enabling Live mode",
+      });
+      return;
+    }
+    setCheckingKeys(true);
+    try {
+      const ok = await hasConnectedExchangeKeys();
+      if (!ok) {
+        setKeysGateOpen(true);
+        pushLog(
+          "warn",
+          "LIVE BLOCKED · no verified exchange API keys · connect a venue first",
+        );
+        return;
+      }
+      setLiveConfirmOpen(true);
+    } finally {
+      setCheckingKeys(false);
+    }
+  }, [
+    executionMode,
+    isLoggedIn,
+    account.address,
+    openConnect,
+    hasConnectedExchangeKeys,
+    pushLog,
+  ]);
+
+  const confirmLiveMode = useCallback(() => {
+    setExecutionMode("live");
+    setLiveConfirmOpen(false);
+    pushLog(
+      "exec",
+      "MODE · LIVE ARMED · real order routing enabled when agent is started",
+    );
+    setToast({ tone: "ok", text: "Live mode armed" });
+  }, [pushLog]);
+
+  const switchToDryRun = useCallback(() => {
+    if (executionMode === "dry_run") return;
+    setExecutionMode("dry_run");
+    pushLog("system", "MODE · DRY RUN · simulation only · no real orders");
+  }, [executionMode, pushLog]);
 
   useEffect(() => {
     if (!open || !agent) return;
@@ -328,15 +456,38 @@ export function AgentTerminalModal({
       });
       return;
     }
+    if (executionMode === "live") {
+      const ok = await hasConnectedExchangeKeys();
+      if (!ok) {
+        setKeysGateOpen(true);
+        pushLog(
+          "warn",
+          "LIVE START BLOCKED · connect & verify exchange API keys first",
+        );
+        setToast({ tone: "err", text: "Exchange API keys required for Live" });
+        return;
+      }
+    }
     setActionBusy("start");
     try {
-      const next = await postAgentStart(agent.id, strategyId);
+      const next = await postAgentStart(agent.id, strategyId, {
+        mode: executionMode,
+        capitalUsd: capital,
+      });
       applyMetrics(next);
+      const modeLabel =
+        executionMode === "live" ? "LIVE · venues hot" : "DRY RUN · simulated fills";
       pushLog(
         "exec",
-        `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · venues hot`,
+        `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
       );
-      setToast({ tone: "ok", text: "Agent started" });
+      setToast({
+        tone: "ok",
+        text:
+          executionMode === "live"
+            ? "Agent started in Live mode"
+            : "Agent started in Dry Run",
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Start failed";
       pushLog("warn", `AGENT START FAILED · ${msg}`);
@@ -354,7 +505,7 @@ export function AgentTerminalModal({
       applyMetrics(next);
       pushLog(
         "system",
-        `AGENT STOP · ${boundStrategy?.name ?? strategyId} · inventory held`,
+        `AGENT STOP · ${boundStrategy?.name ?? strategyId} · inventory held · mode ${executionMode === "live" ? "LIVE" : "DRY RUN"}`,
       );
       setToast({ tone: "ok", text: "Agent stopped" });
     } catch (err) {
@@ -380,17 +531,23 @@ export function AgentTerminalModal({
       });
       return;
     }
+    if (!backtestFrom || !backtestTo || backtestFrom > backtestTo) {
+      pushLog("warn", "BACKTEST BLOCKED · invalid date range (from ≤ to)");
+      setToast({ tone: "err", text: "Pick a valid backtest date range" });
+      return;
+    }
     setBacktestBusy(true);
     pushLog(
       "telemetry",
-      `BACKTEST QUEUED · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · window ${period}`,
+      `BACKTEST QUEUED · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${backtestFrom} → ${backtestTo}`,
     );
     try {
-      const { result } = await postAgentBacktest(
-        agent.id,
-        strategyId,
-        period,
-      );
+      const { result } = await postAgentBacktest(agent.id, strategyId, {
+        from: backtestFrom,
+        to: backtestTo,
+        capitalUsd: capital,
+        mode: "dry_run",
+      });
       pushLog(
         "exec",
         `BACKTEST OK · ${result.trades} trades · win ${result.win_rate_pct}% · PnL ${result.pnl_pct >= 0 ? "+" : ""}${result.pnl_pct}% · DD ${result.max_drawdown_pct}% · Sharpe ${result.sharpe}`,
@@ -443,6 +600,12 @@ export function AgentTerminalModal({
                         Evolgo Command Center · Fullscreen
                       </p>
                       <StatusBadge status={runStatus} />
+                      <ModeBadge mode={executionMode} />
+                      {priceNova != null && (
+                        <span className="inline-flex rounded-md border border-purple/40 bg-purple/12 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-purple">
+                          {priceNova.toLocaleString()} NOVA / mo
+                        </span>
+                      )}
                     </div>
                     <h2
                       id="agent-terminal-title"
@@ -455,6 +618,9 @@ export function AgentTerminalModal({
                       {expiresAt
                         ? ` · Clearance until ${new Date(expiresAt).toLocaleString()}`
                         : ""}
+                      {executionMode === "dry_run"
+                        ? " · Simulation feeds"
+                        : " · Live routing armed"}
                     </p>
                   </div>
 
@@ -491,7 +657,7 @@ export function AgentTerminalModal({
                 </div>
               </header>
 
-              {/* Actions strip — capital + controls (no strategy switcher) */}
+              {/* Actions strip — mode + capital + backtest range + controls */}
               <div
                 ref={backtestFocusRef}
                 className={`shrink-0 border-b px-4 py-2.5 sm:px-5 transition-[border-color,box-shadow,background-color] duration-500 ${
@@ -502,7 +668,44 @@ export function AgentTerminalModal({
               >
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-                    <div className="min-w-[180px] max-w-xs flex-1">
+                    <div>
+                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                        Execution Mode
+                      </p>
+                      <div className="mt-1.5 inline-flex overflow-hidden rounded-xl border border-cyan/30 bg-void/70">
+                        <button
+                          type="button"
+                          disabled={isLive}
+                          onClick={switchToDryRun}
+                          className={`px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                            executionMode === "dry_run"
+                              ? "bg-cyan/20 text-cyan shadow-[inset_0_0_18px_rgba(0,240,255,0.12)]"
+                              : "text-muted hover:bg-white/5 hover:text-foreground"
+                          }`}
+                        >
+                          Dry Run
+                        </button>
+                        <button
+                          type="button"
+                          disabled={checkingKeys || isLive}
+                          onClick={() => void requestLiveMode()}
+                          className={`border-l border-white/10 px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            executionMode === "live"
+                              ? "bg-green/20 text-green shadow-[inset_0_0_18px_rgba(14,203,129,0.14)]"
+                              : "text-muted hover:bg-white/5 hover:text-foreground"
+                          }`}
+                        >
+                          {checkingKeys ? "…" : "Live"}
+                        </button>
+                      </div>
+                      {isLive && (
+                        <p className="mt-1 font-mono text-[9px] text-muted">
+                          Stop agent to change mode
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="min-w-[160px] max-w-xs flex-1">
                       <label
                         htmlFor="capital-allocation"
                         className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted"
@@ -536,6 +739,36 @@ export function AgentTerminalModal({
                           `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · required for Start & Backtest`}
                       </p>
                     </div>
+
+                    <div>
+                      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                        Backtest Period
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <label className="sr-only" htmlFor="backtest-from">
+                          From
+                        </label>
+                        <input
+                          id="backtest-from"
+                          type="date"
+                          value={backtestFrom}
+                          onChange={(e) => setBacktestFrom(e.target.value)}
+                          className="rounded-xl border border-white/12 bg-void/80 px-2.5 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                        />
+                        <span className="font-mono text-[10px] text-muted">→</span>
+                        <label className="sr-only" htmlFor="backtest-to">
+                          To
+                        </label>
+                        <input
+                          id="backtest-to"
+                          type="date"
+                          value={backtestTo}
+                          onChange={(e) => setBacktestTo(e.target.value)}
+                          className="rounded-xl border border-white/12 bg-void/80 px-2.5 py-2 font-mono text-[11px] text-foreground outline-none focus:border-cyan/40"
+                        />
+                      </div>
+                    </div>
+
                     <div className="pb-0.5">
                       <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
                         Bound Strategy
@@ -552,6 +785,7 @@ export function AgentTerminalModal({
                     <AgentRunToggle
                       isLive={isLive}
                       busy={actionBusy !== null}
+                      mode={executionMode}
                       onStart={() => void handleStart()}
                       onStop={() => void handleStop()}
                     />
@@ -595,8 +829,9 @@ export function AgentTerminalModal({
                           {pnlDisplay}
                         </p>
                         <p className="mt-0.5 font-mono text-[10px] text-muted">
-                          Live feed · {boundStrategy?.name ?? strategyId} ·{" "}
-                          {period} · Binance Futures
+                          {executionMode === "live" ? "Live" : "Dry Run"} feed ·{" "}
+                          {boundStrategy?.name ?? strategyId} · {period} · Binance
+                          Futures
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -728,6 +963,9 @@ export function AgentTerminalModal({
                                   className="px-3 py-5 font-mono text-[11px] text-muted sm:px-4"
                                 >
                                   No open positions yet.
+                                  {executionMode === "dry_run"
+                                    ? " Start agent in Dry Run to simulate fills."
+                                    : " Start agent in Live once venues are hot."}
                                 </td>
                               </tr>
                             )}
@@ -792,7 +1030,8 @@ export function AgentTerminalModal({
                       Execution Log
                     </p>
                     <p className="font-mono text-[9px] text-muted">
-                      stream · {isLive ? "live" : "idle"}
+                      stream · {executionMode === "live" ? "live" : "dry"} ·{" "}
+                      {isLive ? "running" : "idle"}
                     </p>
                   </div>
                   <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3 sm:px-4">
@@ -829,7 +1068,13 @@ export function AgentTerminalModal({
                     />
                     <Stat
                       label="Runtime"
-                      value={isLive ? "Live" : "Stopped"}
+                      value={
+                        isLive
+                          ? executionMode === "live"
+                            ? "Live"
+                            : "Dry Run"
+                          : "Stopped"
+                      }
                     />
                   </div>
                 </aside>
@@ -859,7 +1104,147 @@ export function AgentTerminalModal({
         open={exchangeOpen && open}
         onClose={() => setExchangeOpen(false)}
       />
+
+      <AnimatePresence>
+        {liveConfirmOpen && open && (
+          <motion.div
+            className="fixed inset-0 z-[96] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Dismiss live confirmation"
+              className="absolute inset-0 bg-void/75 backdrop-blur-sm"
+              onClick={() => setLiveConfirmOpen(false)}
+            />
+            <motion.div
+              role="dialog"
+              aria-modal
+              aria-labelledby="live-confirm-title"
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="relative z-10 w-full max-w-md rounded-2xl border border-green/35 bg-deep/95 p-5 shadow-[0_0_40px_rgba(14,203,129,0.12)]"
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-green">
+                Live Mode
+              </p>
+              <h3
+                id="live-confirm-title"
+                className="mt-2 font-display text-lg font-semibold tracking-wide"
+              >
+                Enable real order routing?
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                Live mode arms the terminal for exchange execution. Confirm only
+                if you intend to place real futures orders with your connected
+                API keys.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <GlowButton
+                  variant="cyan"
+                  className="!px-4 !py-2.5 !text-xs"
+                  onClick={confirmLiveMode}
+                >
+                  Confirm Live
+                </GlowButton>
+                <GlowButton
+                  variant="ghost"
+                  className="!px-4 !py-2.5 !text-xs"
+                  onClick={() => setLiveConfirmOpen(false)}
+                >
+                  Stay on Dry Run
+                </GlowButton>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {keysGateOpen && open && (
+          <motion.div
+            className="fixed inset-0 z-[96] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Dismiss exchange keys gate"
+              className="absolute inset-0 bg-void/75 backdrop-blur-sm"
+              onClick={() => setKeysGateOpen(false)}
+            />
+            <motion.div
+              role="dialog"
+              aria-modal
+              aria-labelledby="keys-gate-title"
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="relative z-10 w-full max-w-md rounded-2xl border border-purple/35 bg-deep/95 p-5 shadow-[0_0_40px_rgba(179,71,255,0.12)]"
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-purple">
+                Exchange Required
+              </p>
+              <h3
+                id="keys-gate-title"
+                className="mt-2 font-display text-lg font-semibold tracking-wide"
+              >
+                No verified API keys found
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                Live mode needs a connected futures venue (Binance / OKX). Save
+                &amp; Test your keys, then retry enabling Live.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <GlowButton
+                  variant="purple"
+                  className="!px-4 !py-2.5 !text-xs"
+                  onClick={() => {
+                    setKeysGateOpen(false);
+                    setExchangeOpen(true);
+                  }}
+                >
+                  Connect Exchange
+                </GlowButton>
+                <GlowButton
+                  variant="ghost"
+                  className="!px-4 !py-2.5 !text-xs"
+                  onClick={() => setKeysGateOpen(false)}
+                >
+                  Cancel
+                </GlowButton>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
+  );
+}
+
+function ModeBadge({ mode }: { mode: ExecutionMode }) {
+  const live = mode === "live";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+        live
+          ? "border-green/40 bg-green/12 text-green"
+          : "border-cyan/35 bg-cyan/12 text-cyan"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          live
+            ? "bg-green shadow-[0_0_8px_rgba(14,203,129,0.7)]"
+            : "bg-cyan shadow-[0_0_8px_rgba(0,240,255,0.55)]"
+        }`}
+      />
+      {live ? "Live Mode" : "Dry Run"}
+    </span>
   );
 }
 
@@ -880,7 +1265,7 @@ function StatusBadge({ status }: { status: TerminalStatus }) {
             : "bg-muted"
         }`}
       />
-      {live ? "Live" : "Stopped"}
+      {live ? "Running" : "Stopped"}
     </span>
   );
 }
@@ -888,11 +1273,13 @@ function StatusBadge({ status }: { status: TerminalStatus }) {
 function AgentRunToggle({
   isLive,
   busy,
+  mode,
   onStart,
   onStop,
 }: {
   isLive: boolean;
   busy: boolean;
+  mode: ExecutionMode;
   onStart: () => void;
   onStop: () => void;
 }) {
@@ -904,11 +1291,17 @@ function AgentRunToggle({
         onClick={onStart}
         className={`px-3 py-2 font-mono text-[11px] uppercase tracking-wider transition ${
           isLive
-            ? "bg-green/15 text-green"
+            ? mode === "live"
+              ? "bg-green/15 text-green"
+              : "bg-cyan/15 text-cyan"
             : "text-muted hover:bg-white/5 hover:text-cyan"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        {busy && !isLive ? "…" : "Start Agent"}
+        {busy && !isLive
+          ? "…"
+          : mode === "live"
+            ? "Start Live"
+            : "Start Dry Run"}
       </button>
       <button
         type="button"
@@ -920,7 +1313,7 @@ function AgentRunToggle({
             : "text-muted hover:bg-magenta/10 hover:text-magenta"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        {busy && isLive ? "…" : "Stop Agent"}
+        {busy && isLive ? "…" : "Stop"}
       </button>
     </div>
   );

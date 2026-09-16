@@ -29,25 +29,46 @@ export type AgentDefinition = {
   signals: string[];
   /** Public terminal access — no subscription / paywall. */
   freeAccess?: boolean;
+  /**
+   * Exact $NOVA due for a monthly subscription when set.
+   * When omitted, falls back to the global USDC → NOVA formula (+ discount).
+   */
+  subscriptionNova?: number;
 };
 
 /** Platform minimum capital allocation (USD) for agent start / backtest. */
 export const MIN_CAPITAL_ALLOCATION_USD = 100;
 
-/** Monthly subscription in USDC. */
+/** Monthly subscription in USDC (default catalog price). */
 export const AGENT_SUBSCRIPTION_USDC = 30;
 
-/** $NOVA discount vs USDC face value (20% off). */
+/** $NOVA discount vs USDC face value (20% off) for the default catalog price. */
 export const AGENT_NOVA_DISCOUNT = 0.2;
 
-/** Face $NOVA for a month at list price, before discount. */
-export function agentSubscriptionNovaFace(): number {
+type AgentPriceSource = Pick<AgentDefinition, "subscriptionNova"> | null | undefined;
+
+/** Face $NOVA for a month at list price (before discount), or exact override. */
+export function agentSubscriptionNovaFace(agent?: AgentPriceSource): number {
+  if (agent?.subscriptionNova != null && agent.subscriptionNova > 0) {
+    return Math.round(agent.subscriptionNova);
+  }
   return Math.round(AGENT_SUBSCRIPTION_USDC / NOVA_PRICE_IN_USDC);
 }
 
-/** Discounted $NOVA due for monthly access. */
-export function agentSubscriptionNovaAmount(): number {
+/** Discounted / due $NOVA for monthly access (or exact override). */
+export function agentSubscriptionNovaAmount(agent?: AgentPriceSource): number {
+  if (agent?.subscriptionNova != null && agent.subscriptionNova > 0) {
+    return Math.round(agent.subscriptionNova);
+  }
   return Math.round(agentSubscriptionNovaFace() * (1 - AGENT_NOVA_DISCOUNT));
+}
+
+/** USDC due for monthly access (derived from NOVA override when set). */
+export function agentSubscriptionUsdc(agent?: AgentPriceSource): number {
+  if (agent?.subscriptionNova != null && agent.subscriptionNova > 0) {
+    return Math.round(agent.subscriptionNova * NOVA_PRICE_IN_USDC * 100) / 100;
+  }
+  return AGENT_SUBSCRIPTION_USDC;
 }
 
 export function formatRiskScore(score: number, band: RiskBand): string {
@@ -64,6 +85,25 @@ export function isAgentLaunchable(agent: AgentDefinition): boolean {
 }
 
 export const AGENT_CATALOG: readonly AgentDefinition[] = [
+  {
+    id: "evolgo-adaptive-mtf",
+    name: "Evolgo Adaptive MTF",
+    tagline: "EvolgoAdaptiveMTFStrategy",
+    blurb:
+      "Adaptive multi-timeframe intelligence combining Supertrend structure, EMA regime filters, and real-time EvolgoAI orchestration. Designed for balanced risk-adjusted performance across major Binance Futures pairs.",
+    strategyId: "evolgo-adaptive-mtf",
+    winRate: 86.1,
+    pnlPercent: 10.4,
+    maxDrawdownPct: -8.8,
+    riskScore: 31,
+    riskBand: "Moderate",
+    status: "live",
+    availability: "live",
+    accent: "cyan",
+    signals: ["Multi-timeframe filter", "Adaptive trailing", "Orchestrator consensus"],
+    subscriptionNova: 50,
+    freeAccess: false,
+  },
   {
     id: "evolgo-consensus",
     name: "Evolgo Consensus AI",

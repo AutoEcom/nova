@@ -1,6 +1,6 @@
 import {
-  AGENT_SUBSCRIPTION_USDC,
   agentSubscriptionNovaAmount,
+  agentSubscriptionUsdc,
   getAgentById,
 } from "@/config/agents";
 import {
@@ -45,11 +45,18 @@ function sameAddress(a?: string, b?: string): boolean {
   return Boolean(a && b && a.toLowerCase() === b.toLowerCase());
 }
 
-function expectedAtomic(asset: AgentPaymentAsset): bigint {
+function expectedAtomic(
+  asset: AgentPaymentAsset,
+  agentId: string,
+): bigint {
+  const agent = getAgentById(agentId);
   if (asset === "USDC") {
-    return parseAmountToAtomic(String(AGENT_SUBSCRIPTION_USDC), USDC_DECIMALS);
+    return parseAmountToAtomic(String(agentSubscriptionUsdc(agent)), USDC_DECIMALS);
   }
-  return parseAmountToAtomic(String(agentSubscriptionNovaAmount()), NOVA_DECIMALS);
+  return parseAmountToAtomic(
+    String(agentSubscriptionNovaAmount(agent)),
+    NOVA_DECIMALS,
+  );
 }
 
 function expectedToken(asset: AgentPaymentAsset): string {
@@ -87,7 +94,7 @@ export async function verifyAgentSubscriptionPayment(params: {
   }
 
   const tokenId = expectedToken(params.asset);
-  const need = expectedAtomic(params.asset);
+  const need = expectedAtomic(params.asset, params.agentId);
   let paid = BigInt(0);
 
   for (const op of tx.operations ?? []) {
@@ -118,11 +125,12 @@ export async function verifyAgentSubscriptionPayment(params: {
     );
   }
 
+  const agent = getAgentById(params.agentId);
   return {
     amountAtomic: paid.toString(),
     amountHuman:
       params.asset === "USDC"
-        ? String(AGENT_SUBSCRIPTION_USDC)
-        : String(agentSubscriptionNovaAmount()),
+        ? String(agentSubscriptionUsdc(agent))
+        : String(agentSubscriptionNovaAmount(agent)),
   };
 }

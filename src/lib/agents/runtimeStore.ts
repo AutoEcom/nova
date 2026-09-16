@@ -11,6 +11,7 @@ import {
 } from "@/config/strategies";
 
 export type AgentRunStatus = "live" | "stopped";
+export type ExecutionMode = "dry_run" | "live";
 
 export type ActivePosition = {
   id: string;
@@ -26,6 +27,9 @@ export type AgentRuntimeState = {
   agentId: string;
   strategyId: string;
   status: AgentRunStatus;
+  /** dry_run = simulation fills; live = armed for real order routing */
+  mode: ExecutionMode;
+  capitalUsd: number | null;
   cumulativePnlPct: number;
   activePositions: ActivePosition[];
   latencyMs: number;
@@ -35,14 +39,14 @@ export type AgentRuntimeState = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __evolgoAgentRuntimeV3?: Map<string, AgentRuntimeState>;
+  __evolgoAgentRuntimeV4?: Map<string, AgentRuntimeState>;
 };
 
 function store(): Map<string, AgentRuntimeState> {
-  if (!g.__evolgoAgentRuntimeV3) {
-    g.__evolgoAgentRuntimeV3 = new Map();
+  if (!g.__evolgoAgentRuntimeV4) {
+    g.__evolgoAgentRuntimeV4 = new Map();
   }
-  return g.__evolgoAgentRuntimeV3;
+  return g.__evolgoAgentRuntimeV4;
 }
 
 export function runtimeKey(agentId: string, strategyId: string): string {
@@ -61,6 +65,8 @@ function seedState(agentId: string, strategyId: string): AgentRuntimeState {
     agentId,
     strategyId: strategy.id,
     status: "stopped",
+    mode: "dry_run",
+    capitalUsd: null,
     cumulativePnlPct: strategy.telemetry.basePnl,
     activePositions: [],
     latencyMs: 34 + strategy.telemetry.latencyBias,
@@ -102,8 +108,18 @@ export function tickRuntime(
   const vol = strategy.telemetry.volatility;
 
   if (state.status === "live") {
-    state.execSpeed = 85 + Math.floor(Math.random() * 95);
-    const drift = (Math.random() - 0.42) * vol;
+    // Dry Run: faster simulated ticks; Live: tighter latency bias (venue-ready stub)
+    const speedBase = state.mode === "live" ? 70 : 95;
+    const speedSpan = state.mode === "live" ? 60 : 90;
+    state.execSpeed = speedBase + Math.floor(Math.random() * speedSpan);
+    if (state.mode === "live") {
+      state.latencyMs = Math.max(
+        18,
+        state.latencyMs - Math.floor(Math.random() * 4),
+      );
+    }
+    const drift =
+      (Math.random() - 0.42) * vol * (state.mode === "dry_run" ? 1.15 : 1);
     state.cumulativePnlPct = Number(
       (state.cumulativePnlPct + drift).toFixed(2),
     );
@@ -125,16 +141,33 @@ export function tickRuntime(
 export function startAgent(
   agentId: string,
   strategyId: string,
+  options: { mode?: ExecutionMode; capitalUsd?: number } = {},
 ): AgentRuntimeState {
   const strategy = strategyOrThrow(strategyId);
   const state = getOrCreateRuntime(agentId, strategy.id);
+  const mode: ExecutionMode = options.mode === "live" ? "live" : "dry_run";
+  state.mode = mode;
+  if (
+    typeof options.capitalUsd === "number" &&
+    Number.isFinite(options.capitalUsd)
+  ) {
+    state.capitalUsd = options.capitalUsd;
+  }
   if (state.status === "live") return tickRuntime(agentId, strategy.id);
 
   state.status = "live";
-  state.execSpeed = 110 + Math.floor(Math.random() * 40);
+  state.execSpeed =
+    mode === "live"
+      ? 95 + Math.floor(Math.random() * 35)
+      : 120 + Math.floor(Math.random() * 45);
   if (state.activePositions.length === 0) {
+    // Both modes seed stub inventory; Live marks readiness for real routing upstream
     state.activePositions = strategy.telemetry.positions.map((p) => ({
       ...p,
+      size:
+        mode === "dry_run" && !p.size.includes("SIM")
+          ? `${p.size} · SIM`
+          : p.size,
     }));
   }
   state.updatedAt = new Date().toISOString();
@@ -218,6 +251,8 @@ export function metricsPayload(state: AgentRuntimeState) {
     strategy: state.strategyId,
     strategy_id: state.strategyId,
     status: state.status,
+    mode: state.mode,
+    capital_usd: state.capitalUsd,
     cumulative_pnl_pct: state.cumulativePnlPct,
     active_positions: state.activePositions,
     latency_ms: state.latencyMs,

@@ -20,6 +20,8 @@ export type TerminalMetrics = {
   strategy?: string;
   strategy_id?: string;
   status: TerminalStatus;
+  mode?: "dry_run" | "live";
+  capital_usd?: number | null;
   cumulative_pnl_pct: number;
   active_positions: TerminalPosition[];
   latency_ms: number;
@@ -69,11 +71,17 @@ export async function fetchTerminalMetrics(
 export async function postAgentStart(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
+  options: { mode?: "dry_run" | "live"; capitalUsd?: number } = {},
 ): Promise<TerminalMetrics & { message?: string }> {
   const res = await fetch("/api/v1/agent/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, strategy }),
+    body: JSON.stringify({
+      agentId,
+      strategy,
+      mode: options.mode ?? "dry_run",
+      capitalUsd: options.capitalUsd,
+    }),
   });
   const json = await parseJson<
     TerminalMetrics & { message?: string; error?: string }
@@ -105,12 +113,26 @@ export async function postAgentStop(
 export async function postAgentBacktest(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
-  window = "30D",
+  options: {
+    window?: string;
+    from?: string;
+    to?: string;
+    capitalUsd?: number;
+    mode?: "dry_run" | "live";
+  } = {},
 ): Promise<{ ok: true; result: BacktestResult; message?: string }> {
   const res = await fetch("/api/v1/agent/backtest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, strategy, window }),
+    body: JSON.stringify({
+      agentId,
+      strategy,
+      window: options.window,
+      from: options.from,
+      to: options.to,
+      capitalUsd: options.capitalUsd,
+      mode: options.mode,
+    }),
   });
   const json = await parseJson<{
     ok?: boolean;

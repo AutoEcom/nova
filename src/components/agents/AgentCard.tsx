@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GlowButton } from "@/components/ui/GlowButton";
 import {
+  agentSubscriptionNovaAmount,
   formatMaxDrawdown,
   formatRiskScore,
   isAgentLaunchable,
@@ -48,17 +49,24 @@ export function AgentCard({
   onLaunch,
 }: AgentCardProps) {
   const launchable = isAgentLaunchable(agent);
+  const priceNova = agent.freeAccess
+    ? null
+    : agentSubscriptionNovaAmount(agent);
   const accessLabel = !launchable
     ? availabilityLabel[agent.availability]
     : agent.freeAccess
       ? "Free Access"
       : subscribed
         ? "Subscribed"
-        : "Locked";
+        : priceNova != null
+          ? `${priceNova.toLocaleString()} NOVA / mo`
+          : "Locked";
   const accessTone =
     launchable && (agent.freeAccess || subscribed)
       ? "text-green"
-      : "text-muted";
+      : launchable && priceNova != null
+        ? "text-purple"
+        : "text-muted";
 
   const metrics = [
     {
@@ -123,6 +131,11 @@ export function AgentCard({
             {agent.freeAccess && launchable && (
               <span className="inline-flex rounded-md border border-green/40 bg-green/12 px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-green">
                 Free
+              </span>
+            )}
+            {!agent.freeAccess && launchable && priceNova != null && (
+              <span className="inline-flex rounded-md border border-purple/40 bg-purple/12 px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-purple">
+                {priceNova.toLocaleString()} NOVA
               </span>
             )}
           </div>
@@ -219,7 +232,14 @@ export function AgentCard({
                 </div>
               </div>
 
-              <div className="flex w-full shrink-0 flex-col justify-end lg:w-44">
+              <div className="flex w-full shrink-0 flex-col justify-end gap-2 lg:w-44">
+                {launchable && !agent.freeAccess && priceNova != null && (
+                  <p className="text-center font-mono text-[10px] text-purple">
+                    {subscribed
+                      ? "Access unlocked"
+                      : `${priceNova.toLocaleString()} $NOVA / month`}
+                  </p>
+                )}
                 {launchable ? (
                   <GlowButton
                     variant="cyan"
@@ -227,7 +247,9 @@ export function AgentCard({
                     onClick={() => onLaunch(agent)}
                     className={`!px-4 !py-3 !text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}
                   >
-                    Launch Terminal
+                    {agent.freeAccess || subscribed
+                      ? "Launch Terminal"
+                      : `Unlock · ${priceNova?.toLocaleString() ?? ""} NOVA`}
                   </GlowButton>
                 ) : (
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center font-mono text-[10px] uppercase tracking-wider text-muted">

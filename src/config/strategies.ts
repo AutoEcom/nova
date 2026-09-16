@@ -1,6 +1,10 @@
 /**
  * Trading strategy catalog for Evolgo agent workspaces.
  * Each live agent binds to exactly one strategy (no in-terminal switching).
+ *
+ * TODO(terminal-modes): Agent terminals must default to Dry Run, expose a clear
+ * Dry Run | Live toggle (Live needs confirm + exchange API keys), and a separate
+ * Run Backtest flow with period + capital (≥ $100). See AgentTerminalModal header.
  */
 
 /** Top 10 liquid Binance USD-M Futures pairs (Consensus default universe). */
@@ -162,6 +166,45 @@ const PUMP_HUNTER_POSITIONS: StrategyPositionSeed[] = [
   },
 ];
 
+const ADAPTIVE_MTF_POSITIONS: StrategyPositionSeed[] = [
+  {
+    id: "a1",
+    pair: "ETH/USDT",
+    side: "Long",
+    entry: "3,385",
+    size: "1.25",
+    pnl_pct: 1.84,
+    status: "Open",
+  },
+  {
+    id: "a2",
+    pair: "SOL/USDT",
+    side: "Long",
+    entry: "151.40",
+    size: "32.0",
+    pnl_pct: 0.92,
+    status: "Open",
+  },
+  {
+    id: "a3",
+    pair: "LINK/USDT",
+    side: "Long",
+    entry: "14.65",
+    size: "110.0",
+    pnl_pct: 2.31,
+    status: "Partial",
+  },
+  {
+    id: "a4",
+    pair: "BTC/USDT",
+    side: "Long",
+    entry: "64,150",
+    size: "0.042",
+    pnl_pct: -0.38,
+    status: "Open",
+  },
+];
+
 export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
   {
     id: "evolgo-consensus",
@@ -186,6 +229,19 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
       volatility: 0.55,
       latencyBias: 8,
       positions: PUMP_HUNTER_POSITIONS,
+    },
+  },
+  {
+    id: "evolgo-adaptive-mtf",
+    name: "EvolgoAdaptiveMTFStrategy",
+    blurb:
+      "Adaptive multi-timeframe intelligence · Supertrend + EMA regime + EvolgoAI orchestration",
+    status: "beta",
+    telemetry: {
+      basePnl: 10.4,
+      volatility: 0.22,
+      latencyBias: 3,
+      positions: ADAPTIVE_MTF_POSITIONS,
     },
   },
 ] as const;

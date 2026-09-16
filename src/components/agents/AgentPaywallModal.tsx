@@ -7,9 +7,9 @@ import { refreshAccount } from "@multiversx/sdk-dapp/out/utils/account/refreshAc
 import { GlowButton } from "@/components/ui/GlowButton";
 import {
   AGENT_NOVA_DISCOUNT,
-  AGENT_SUBSCRIPTION_USDC,
   agentSubscriptionNovaAmount,
   agentSubscriptionNovaFace,
+  agentSubscriptionUsdc,
   type AgentDefinition,
 } from "@/config/agents";
 import {
@@ -41,9 +41,17 @@ export function AgentPaywallModal({
   >("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const novaFace = useMemo(() => agentSubscriptionNovaFace(), []);
-  const novaDiscounted = useMemo(() => agentSubscriptionNovaAmount(), []);
-  const discountPct = Math.round(AGENT_NOVA_DISCOUNT * 100);
+  const usdcPrice = useMemo(() => agentSubscriptionUsdc(agent), [agent]);
+  const novaFace = useMemo(() => agentSubscriptionNovaFace(agent), [agent]);
+  const novaDiscounted = useMemo(
+    () => agentSubscriptionNovaAmount(agent),
+    [agent],
+  );
+  const hasCustomNovaPrice =
+    agent?.subscriptionNova != null && agent.subscriptionNova > 0;
+  const discountPct = hasCustomNovaPrice
+    ? 0
+    : Math.round(AGENT_NOVA_DISCOUNT * 100);
 
   const busy = status === "signing" || status === "activating";
 
@@ -187,7 +195,7 @@ export function AgentPaywallModal({
                     Standard
                   </p>
                   <p className="mt-1 font-display text-lg font-semibold text-cyan">
-                    {AGENT_SUBSCRIPTION_USDC} USDC
+                    {usdcPrice} USDC
                   </p>
                   <p className="mt-1 font-mono text-[10px] text-muted">/ month</p>
                 </button>
@@ -201,14 +209,19 @@ export function AgentPaywallModal({
                   }`}
                 >
                   <p className="font-mono text-[10px] uppercase tracking-wider text-purple">
-                    Save {discountPct}%
+                    {hasCustomNovaPrice ? "$NOVA price" : `Save ${discountPct}%`}
                   </p>
                   <p className="mt-1 font-display text-lg font-semibold text-purple">
                     {novaDiscounted.toLocaleString()} NOVA
                   </p>
-                  <p className="mt-1 font-mono text-[10px] text-muted line-through">
-                    {novaFace.toLocaleString()} NOVA
-                  </p>
+                  {!hasCustomNovaPrice && (
+                    <p className="mt-1 font-mono text-[10px] text-muted line-through">
+                      {novaFace.toLocaleString()} NOVA
+                    </p>
+                  )}
+                  {hasCustomNovaPrice && (
+                    <p className="mt-1 font-mono text-[10px] text-muted">/ month</p>
+                  )}
                 </button>
               </div>
 
@@ -238,7 +251,7 @@ export function AgentPaywallModal({
                     : busy
                       ? "Processing…"
                       : asset === "USDC"
-                        ? `Pay ${AGENT_SUBSCRIPTION_USDC} USDC`
+                        ? `Pay ${usdcPrice} USDC`
                         : `Pay ${novaDiscounted.toLocaleString()} NOVA`}
                 </GlowButton>
                 <GlowButton

@@ -5,7 +5,7 @@ import { runBacktestStub } from "@/lib/agents/runtimeStore";
 
 export const runtime = "nodejs";
 
-/** POST /api/v1/agent/backtest  { agentId, strategy?, window? } */
+/** POST /api/v1/agent/backtest  { agentId, strategy?, window?, from?, to?, capitalUsd? } */
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -13,6 +13,10 @@ export async function POST(request: Request) {
       strategy?: string;
       strategyId?: string;
       window?: string;
+      from?: string;
+      to?: string;
+      capitalUsd?: number;
+      mode?: string;
     };
     const agentId = body.agentId?.trim() ?? "";
     const strategy = resolveStrategyId(body.strategy ?? body.strategyId);
@@ -30,13 +34,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const window = body.window?.trim() || "30D";
-    const result = await runBacktestStub(agentId, strategy, window);
+    const dateWindow =
+      body.from && body.to
+        ? `${body.from}→${body.to}`
+        : body.window?.trim() || "30D";
+    const result = await runBacktestStub(agentId, strategy, dateWindow);
 
     return NextResponse.json({
       ok: true,
       agentId,
       strategy,
+      capitalUsd: body.capitalUsd ?? null,
+      mode: body.mode ?? "dry_run",
       message: "Backtest complete",
       result,
     });

@@ -6,8 +6,9 @@ import {
   TransactionsFactoryConfig,
 } from "@multiversx/sdk-core";
 import {
-  AGENT_SUBSCRIPTION_USDC,
   agentSubscriptionNovaAmount,
+  agentSubscriptionUsdc,
+  getAgentById,
 } from "@/config/agents";
 import {
   CHAIN_ID,
@@ -27,6 +28,7 @@ export async function createAgentSubscriptionPayment(params: {
   asset: AgentPaymentAsset;
   nonce: number;
 }) {
+  const agent = getAgentById(params.agentId);
   const sender = Address.newFromBech32(params.senderAddress);
   const receiver = Address.newFromBech32(TREASURY_ADDRESS);
   const factory = new TransferTransactionsFactory({
@@ -34,10 +36,8 @@ export async function createAgentSubscriptionPayment(params: {
   });
 
   if (params.asset === "USDC") {
-    const amount = parseAmountToAtomic(
-      String(AGENT_SUBSCRIPTION_USDC),
-      USDC_DECIMALS,
-    );
+    const usdcHuman = String(agentSubscriptionUsdc(agent));
+    const amount = parseAmountToAtomic(usdcHuman, USDC_DECIMALS);
     const usdc = new Token({ identifier: USDC_TOKEN_ID });
     const transfer = new TokenTransfer({ token: usdc, amount });
     const tx = await factory.createTransactionForESDTTokenTransfer(sender, {
@@ -50,11 +50,11 @@ export async function createAgentSubscriptionPayment(params: {
     return {
       tx,
       amountAtomic: amount.toString(),
-      amountHuman: String(AGENT_SUBSCRIPTION_USDC),
+      amountHuman: usdcHuman,
     };
   }
 
-  const novaHuman = String(agentSubscriptionNovaAmount());
+  const novaHuman = String(agentSubscriptionNovaAmount(agent));
   const amount = parseAmountToAtomic(novaHuman, NOVA_DECIMALS);
   const nova = new Token({ identifier: NOVA_TOKEN_ID });
   const transfer = new TokenTransfer({ token: nova, amount });
