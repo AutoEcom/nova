@@ -22,6 +22,8 @@ export type TerminalMetrics = {
   status: TerminalStatus;
   mode?: "dry_run" | "live";
   capital_usd?: number | null;
+  session_id?: string | null;
+  sessionId?: string | null;
   cumulative_pnl_pct: number;
   active_positions: TerminalPosition[];
   latency_ms: number;
@@ -71,8 +73,12 @@ export async function fetchTerminalMetrics(
 export async function postAgentStart(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
-  options: { mode?: "dry_run" | "live"; capitalUsd?: number } = {},
-): Promise<TerminalMetrics & { message?: string }> {
+  options: {
+    mode?: "dry_run" | "live";
+    capitalUsd?: number;
+    walletAddress?: string | null;
+  } = {},
+): Promise<TerminalMetrics & { message?: string; sessionId?: string }> {
   const res = await fetch("/api/v1/agent/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -81,10 +87,15 @@ export async function postAgentStart(
       strategy,
       mode: options.mode ?? "dry_run",
       capitalUsd: options.capitalUsd,
+      walletAddress: options.walletAddress ?? undefined,
     }),
   });
   const json = await parseJson<
-    TerminalMetrics & { message?: string; error?: string }
+    TerminalMetrics & {
+      message?: string;
+      error?: string;
+      sessionId?: string;
+    }
   >(res);
   if (!res.ok || !json.ok) {
     throw new Error(json.error ?? "Failed to start agent");

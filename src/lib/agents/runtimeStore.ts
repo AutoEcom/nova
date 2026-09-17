@@ -30,6 +30,8 @@ export type AgentRuntimeState = {
   /** dry_run = simulation fills; live = armed for real order routing */
   mode: ExecutionMode;
   capitalUsd: number | null;
+  /** Orchestrator session id when Live registration succeeded. */
+  sessionId: string | null;
   cumulativePnlPct: number;
   activePositions: ActivePosition[];
   latencyMs: number;
@@ -39,14 +41,14 @@ export type AgentRuntimeState = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __evolgoAgentRuntimeV4?: Map<string, AgentRuntimeState>;
+  __evolgoAgentRuntimeV5?: Map<string, AgentRuntimeState>;
 };
 
 function store(): Map<string, AgentRuntimeState> {
-  if (!g.__evolgoAgentRuntimeV4) {
-    g.__evolgoAgentRuntimeV4 = new Map();
+  if (!g.__evolgoAgentRuntimeV5) {
+    g.__evolgoAgentRuntimeV5 = new Map();
   }
-  return g.__evolgoAgentRuntimeV4;
+  return g.__evolgoAgentRuntimeV5;
 }
 
 export function runtimeKey(agentId: string, strategyId: string): string {
@@ -67,6 +69,7 @@ function seedState(agentId: string, strategyId: string): AgentRuntimeState {
     status: "stopped",
     mode: "dry_run",
     capitalUsd: null,
+    sessionId: null,
     cumulativePnlPct: strategy.telemetry.basePnl,
     activePositions: [],
     latencyMs: 34 + strategy.telemetry.latencyBias,
@@ -141,7 +144,11 @@ export function tickRuntime(
 export function startAgent(
   agentId: string,
   strategyId: string,
-  options: { mode?: ExecutionMode; capitalUsd?: number } = {},
+  options: {
+    mode?: ExecutionMode;
+    capitalUsd?: number;
+    sessionId?: string | null;
+  } = {},
 ): AgentRuntimeState {
   const strategy = strategyOrThrow(strategyId);
   const state = getOrCreateRuntime(agentId, strategy.id);
@@ -152,6 +159,11 @@ export function startAgent(
     Number.isFinite(options.capitalUsd)
   ) {
     state.capitalUsd = options.capitalUsd;
+  }
+  if (options.sessionId !== undefined) {
+    state.sessionId = options.sessionId;
+  } else if (mode === "dry_run") {
+    state.sessionId = null;
   }
   if (state.status === "live") return tickRuntime(agentId, strategy.id);
 
@@ -184,6 +196,7 @@ export function stopAgent(
   state.status = "stopped";
   state.execSpeed = 0;
   state.activePositions = [];
+  state.sessionId = null;
   state.updatedAt = new Date().toISOString();
   store().set(runtimeKey(agentId, strategy.id), state);
   return cloneState(state);
@@ -253,6 +266,7 @@ export function metricsPayload(state: AgentRuntimeState) {
     status: state.status,
     mode: state.mode,
     capital_usd: state.capitalUsd,
+    session_id: state.sessionId,
     cumulative_pnl_pct: state.cumulativePnlPct,
     active_positions: state.activePositions,
     latency_ms: state.latencyMs,

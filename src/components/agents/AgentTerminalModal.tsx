@@ -498,10 +498,16 @@ export function AgentTerminalModal({
       const next = await postAgentStart(agent.id, strategyId, {
         mode: executionMode,
         capitalUsd: capital,
+        walletAddress: account.address || null,
       });
       applyMetrics(next);
+      const sessionId = next.sessionId ?? next.session_id ?? null;
       const modeLabel =
-        executionMode === "live" ? "LIVE · venues hot" : "DRY RUN · simulated fills";
+        executionMode === "live"
+          ? sessionId
+            ? `LIVE · session ${sessionId}`
+            : "LIVE · venues hot"
+          : "DRY RUN · simulated fills";
       pushLog(
         "exec",
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
@@ -511,7 +517,9 @@ export function AgentTerminalModal({
         tone: "ok",
         text:
           executionMode === "live"
-            ? "Agent started in Live mode"
+            ? sessionId
+              ? `Live session registered · ${sessionId}`
+              : "Agent started in Live mode"
             : "Agent started in Dry Run",
       });
     } catch (err) {
