@@ -41,6 +41,8 @@ export type StrategyDefinition = {
   name: string;
   blurb: string;
   status: StrategyStatus;
+  /** Default futures leverage when agent does not override. */
+  defaultLeverage?: number;
   /** Seed for stub telemetry isolation */
   telemetry: {
     basePnl: number;
@@ -212,6 +214,7 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     blurb:
       "Multi-signal consensus across top-10 Binance Futures · mean reversion + microstructure filters",
     status: "live",
+    defaultLeverage: 3,
     telemetry: {
       basePnl: 9.4,
       volatility: 0.28,
@@ -224,6 +227,7 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     name: "EvolgoPumpHunter",
     blurb: "Impulse / breakout hunter · short-lived momentum bursts",
     status: "coming_soon",
+    defaultLeverage: 7,
     telemetry: {
       basePnl: 14.8,
       volatility: 0.55,
@@ -237,6 +241,7 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     blurb:
       "Adaptive multi-timeframe intelligence · Supertrend + EMA regime + EvolgoAI orchestration",
     status: "beta",
+    defaultLeverage: 5,
     telemetry: {
       basePnl: 10.4,
       volatility: 0.22,

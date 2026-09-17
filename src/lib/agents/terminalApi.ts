@@ -24,6 +24,7 @@ export type TerminalMetrics = {
   capital_usd?: number | null;
   session_id?: string | null;
   sessionId?: string | null;
+  leverage?: number | null;
   cumulative_pnl_pct: number;
   active_positions: TerminalPosition[];
   latency_ms: number;
@@ -77,6 +78,7 @@ export async function postAgentStart(
     mode?: "dry_run" | "live";
     capitalUsd?: number;
     walletAddress?: string | null;
+    leverage?: number;
   } = {},
 ): Promise<TerminalMetrics & { message?: string; sessionId?: string }> {
   const res = await fetch("/api/v1/agent/start", {
@@ -88,6 +90,7 @@ export async function postAgentStart(
       mode: options.mode ?? "dry_run",
       capitalUsd: options.capitalUsd,
       walletAddress: options.walletAddress ?? undefined,
+      leverage: options.leverage,
     }),
   });
   const json = await parseJson<

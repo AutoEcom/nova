@@ -18,9 +18,14 @@ import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeApiModal } from "@/components/agents/ExchangeApiModal";
 import {
   agentSubscriptionNovaAmount,
+  clampLeverage,
+  FALLBACK_DEFAULT_LEVERAGE,
   formatMaxDrawdown,
   formatRiskScore,
+  MAX_LEVERAGE,
   MIN_CAPITAL_ALLOCATION_USD,
+  MIN_LEVERAGE,
+  resolveDefaultLeverage,
   type AgentDefinition,
 } from "@/config/agents";
 import {
@@ -174,6 +179,10 @@ export function AgentTerminalModal({
   const [backtestTo, setBacktestTo] = useState(() => defaultBacktestRange().to);
   const [capitalInput, setCapitalInput] = useState(DEFAULT_CAPITAL);
   const [capitalError, setCapitalError] = useState<string | null>(null);
+  const [leverageInput, setLeverageInput] = useState(
+    String(FALLBACK_DEFAULT_LEVERAGE),
+  );
+  const [leverageError, setLeverageError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
@@ -245,6 +254,20 @@ export function AgentTerminalModal({
     return amount;
   }, [capitalInput]);
 
+  const validateLeverage = useCallback((): number | null => {
+    const raw = Number(leverageInput);
+    if (
+      !Number.isFinite(raw) ||
+      raw < MIN_LEVERAGE ||
+      raw > MAX_LEVERAGE
+    ) {
+      setLeverageError(`Leverage must be ${MIN_LEVERAGE}–${MAX_LEVERAGE}x`);
+      return null;
+    }
+    setLeverageError(null);
+    return clampLeverage(raw);
+  }, [leverageInput]);
+
   useEffect(() => {
     if (!open) {
       setExchangeOpen(false);
@@ -297,6 +320,12 @@ export function AgentTerminalModal({
     setBacktestTo(range.to);
     setCapitalInput(DEFAULT_CAPITAL);
     setCapitalError(null);
+    setLeverageInput(
+      String(
+        resolveDefaultLeverage(agent, boundStrategy?.defaultLeverage ?? null),
+      ),
+    );
+    setLeverageError(null);
     setMetrics(null);
     pollFailRef.current = 0;
     const priceNote =
@@ -337,7 +366,7 @@ export function AgentTerminalModal({
           : "CLEARANCE VERIFIED · capital allocation required before start",
       },
     ]);
-  }, [open, agent, boundStrategy?.name, strategyId, priceNova]);
+  }, [open, agent, boundStrategy?.name, boundStrategy?.defaultLeverage, strategyId, priceNova]);
 
   const hasConnectedExchangeKeys = useCallback(async (): Promise<boolean> => {
     if (!isLoggedIn || !account.address) return false;
@@ -481,6 +510,19 @@ export function AgentTerminalModal({
       });
       return;
     }
+    const leverage = validateLeverage();
+    if (leverage === null) {
+      setMobileControlsOpen(true);
+      pushLog(
+        "warn",
+        `LEVERAGE REJECTED · must be ${MIN_LEVERAGE}–${MAX_LEVERAGE}x`,
+      );
+      setToast({
+        tone: "err",
+        text: `Leverage must be ${MIN_LEVERAGE}–${MAX_LEVERAGE}x`,
+      });
+      return;
+    }
     if (executionMode === "live") {
       const ok = await hasConnectedExchangeKeys();
       if (!ok) {
@@ -499,15 +541,16 @@ export function AgentTerminalModal({
         mode: executionMode,
         capitalUsd: capital,
         walletAddress: account.address || null,
+        leverage,
       });
       applyMetrics(next);
       const sessionId = next.sessionId ?? next.session_id ?? null;
       const modeLabel =
         executionMode === "live"
           ? sessionId
-            ? `LIVE · session ${sessionId}`
-            : "LIVE · venues hot"
-          : "DRY RUN · simulated fills";
+            ? `LIVE · session ${sessionId} · ${leverage}x`
+            : `LIVE · ${leverage}x`
+          : `DRY RUN · simulated fills · ${leverage}x`;
       pushLog(
         "exec",
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
@@ -749,6 +792,10 @@ export function AgentTerminalModal({
                     <span className="text-foreground/80">
                       ${capitalInput || "—"}
                     </span>
+                    <span className="text-white/25"> · </span>
+                    <span className="text-foreground/80">
+                      {leverageInput || "—"}x
+                    </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <AgentRunToggle
@@ -781,7 +828,7 @@ export function AgentTerminalModal({
                   }`}
                 >
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                    <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                       <div className="flex min-w-0 flex-col">
                         <p className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted">
                           Execution Mode
@@ -849,6 +896,43 @@ export function AgentTerminalModal({
                         >
                           {capitalError ??
                             `Min $${MIN_CAPITAL_ALLOCATION_USD.toLocaleString()} · Start & Backtest`}
+                        </p>
+                      </div>
+
+                      <div className="flex min-w-0 flex-col">
+                        <label
+                          htmlFor="default-leverage"
+                          className="h-4 font-mono text-[9px] uppercase leading-4 tracking-[0.16em] text-muted"
+                        >
+                          Default Leverage
+                        </label>
+                        <div className="relative mt-1.5 h-10">
+                          <input
+                            id="default-leverage"
+                            type="number"
+                            min={MIN_LEVERAGE}
+                            max={MAX_LEVERAGE}
+                            step="1"
+                            inputMode="numeric"
+                            disabled={isLive}
+                            value={leverageInput}
+                            onChange={(e) => {
+                              setLeverageInput(e.target.value);
+                              setLeverageError(null);
+                            }}
+                            className="h-10 w-full rounded-xl border border-cyan/25 bg-void/80 py-0 pl-3 pr-8 font-mono text-[12px] leading-10 text-foreground outline-none focus:border-cyan/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[11px] text-muted">
+                            x
+                          </span>
+                        </div>
+                        <p
+                          className={`mt-1 min-h-4 font-mono text-[9px] leading-4 ${
+                            leverageError ? "text-magenta" : "text-muted"
+                          }`}
+                        >
+                          {leverageError ??
+                            `${MIN_LEVERAGE}–${MAX_LEVERAGE}x · agent default overridable`}
                         </p>
                       </div>
 

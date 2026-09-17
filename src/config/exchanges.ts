@@ -6,6 +6,9 @@ export type ExchangeDefinition = {
   endpointLabel: string;
 };
 
+/** Evolgo Contabo egress IP — operators should whitelist only this address. */
+export const EVOLGO_EXCHANGE_WHITELIST_IP = "169.58.176.239";
+
 /** Venues available for agent API integration (futures only). */
 export const EXCHANGE_CATALOG: readonly ExchangeDefinition[] = [
   {

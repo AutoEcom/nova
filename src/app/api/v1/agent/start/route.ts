@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAgentById } from "@/config/agents";
+import { getAgentById, clampLeverage } from "@/config/agents";
 import { getStrategyById, resolveStrategyId } from "@/config/strategies";
 import {
   OrchestratorError,
@@ -9,7 +9,7 @@ import { metricsPayload, startAgent } from "@/lib/agents/runtimeStore";
 
 export const runtime = "nodejs";
 
-/** POST /api/v1/agent/start  { agentId, strategy?, mode?, capitalUsd?, walletAddress? } */
+/** POST /api/v1/agent/start  { agentId, strategy?, mode?, capitalUsd?, walletAddress?, leverage? } */
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -19,11 +19,16 @@ export async function POST(request: Request) {
       mode?: "dry_run" | "live";
       capitalUsd?: number;
       walletAddress?: string;
+      leverage?: number;
     };
     const agentId = body.agentId?.trim() ?? "";
     const strategy = resolveStrategyId(body.strategy ?? body.strategyId);
     const mode = body.mode === "live" ? "live" : "dry_run";
     const walletAddress = body.walletAddress?.trim() || null;
+    const leverage =
+      typeof body.leverage === "number" && Number.isFinite(body.leverage)
+        ? clampLeverage(body.leverage)
+        : undefined;
 
     if (!agentId || !getAgentById(agentId)) {
       return NextResponse.json(
@@ -45,7 +50,11 @@ export async function POST(request: Request) {
 
     // Dry Run — local stub only (unchanged behaviour).
     if (mode === "dry_run") {
-      const state = startAgent(agentId, strategy, { mode, capitalUsd });
+      const state = startAgent(agentId, strategy, {
+        mode,
+        capitalUsd,
+        leverage,
+      });
       const capitalPart =
         capitalUsd != null ? ` · $${capitalUsd.toLocaleString()} capital` : "";
       return NextResponse.json({
@@ -63,6 +72,10 @@ export async function POST(request: Request) {
     }
 
     const agent = getAgentById(agentId)!;
+    const liveLeverage =
+      leverage ??
+      clampLeverage(agent.defaultLeverage ?? getStrategyById(strategy)?.defaultLeverage ?? 3);
+
     let session;
     try {
       session = await registerLiveSession({
@@ -70,6 +83,7 @@ export async function POST(request: Request) {
         strategyId: strategy,
         capitalUsd,
         walletAddress,
+        leverage: liveLeverage,
         venue: {
           exchange: "binance",
           market: "futures",
@@ -95,6 +109,7 @@ export async function POST(request: Request) {
     const state = startAgent(agentId, strategy, {
       mode: "live",
       capitalUsd,
+      leverage: liveLeverage,
       sessionId: session.sessionId,
     });
 
@@ -103,7 +118,7 @@ export async function POST(request: Request) {
       sessionId: session.sessionId,
       message:
         session.message ??
-        `Agent started · LIVE · session ${session.sessionId} · ${strategy} · $${capitalUsd.toLocaleString()} capital`,
+        `Agent started · LIVE · session ${session.sessionId} · ${strategy} · $${capitalUsd.toLocaleString()} · ${liveLeverage}x`,
     });
   } catch (err) {
     console.error("[v1/agent/start]", err);

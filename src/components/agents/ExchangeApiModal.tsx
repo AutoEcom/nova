@@ -6,7 +6,12 @@ import { useGetAccount } from "@multiversx/sdk-dapp/out/react/account/useGetAcco
 import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeMark } from "@/components/exchanges/ExchangeLogos";
-import { EXCHANGE_CATALOG, getExchangeById } from "@/config/exchanges";
+import {
+  EVOLGO_EXCHANGE_WHITELIST_IP,
+  EXCHANGE_CATALOG,
+  getExchangeById,
+} from "@/config/exchanges";
+import Link from "next/link";
 import { useWalletUI } from "@/providers/WalletUIProvider";
 
 type Connection = {
@@ -400,6 +405,38 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                     </motion.ul>
                   )}
                 </AnimatePresence>
+              </div>
+
+              <div className="rounded-xl border border-amber-300/30 bg-amber-300/[0.07] px-3.5 py-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-200">
+                  API key security
+                </p>
+                <ul className="mt-2 space-y-1.5 font-mono text-[11px] leading-5 text-foreground/90">
+                  <li>
+                    Whitelist <span className="text-amber-100">only</span> Evolgo
+                    IP:{" "}
+                    <code className="rounded bg-black/35 px-1.5 py-0.5 text-cyan">
+                      {EVOLGO_EXCHANGE_WHITELIST_IP}
+                    </code>
+                  </li>
+                  <li>
+                    Enable:{" "}
+                    <span className="text-amber-100">Reading + Futures</span>
+                  </li>
+                  <li>
+                    Disable:{" "}
+                    <span className="font-semibold text-loss">Withdrawals</span>{" "}
+                    (required)
+                  </li>
+                </ul>
+                <Link
+                  href="/docs/exchange-setup"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2.5 inline-flex font-mono text-[11px] text-cyan underline-offset-2 hover:underline"
+                >
+                  View setup guide →
+                </Link>
               </div>
 
               <label className="block">

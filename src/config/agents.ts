@@ -34,10 +34,17 @@ export type AgentDefinition = {
    * When omitted, falls back to the global USDC → NOVA formula (+ discount).
    */
   subscriptionNova?: number;
+  /** Default futures leverage for Live sessions (user-overridable in terminal). */
+  defaultLeverage?: number;
 };
 
 /** Platform minimum capital allocation (USD) for agent start / backtest. */
 export const MIN_CAPITAL_ALLOCATION_USD = 100;
+
+/** Futures leverage bounds for terminal / Live session registration. */
+export const MIN_LEVERAGE = 1;
+export const MAX_LEVERAGE = 20;
+export const FALLBACK_DEFAULT_LEVERAGE = 3;
 
 /** Monthly subscription in USDC (default catalog price). */
 export const AGENT_SUBSCRIPTION_USDC = 30;
@@ -103,6 +110,7 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     signals: ["Multi-timeframe filter", "Adaptive trailing", "Orchestrator consensus"],
     subscriptionNova: 50,
     freeAccess: false,
+    defaultLeverage: 5,
   },
   {
     id: "evolgo-consensus",
@@ -121,6 +129,7 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     accent: "cyan",
     signals: ["Top-10 futures book", "Consensus filters", "Kill-switch ready"],
     freeAccess: true,
+    defaultLeverage: 3,
   },
   {
     id: "evolgo-pump-hunter",
@@ -138,6 +147,7 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     availability: "in_training",
     accent: "purple",
     signals: ["Impulse detect", "Volatility bands", "Trail protection"],
+    defaultLeverage: 7,
   },
   {
     id: "vault-guardian",
@@ -155,6 +165,7 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     availability: "coming_soon",
     accent: "green",
     signals: ["Drawdown caps", "Inventory hedge", "Slow-compound mode"],
+    defaultLeverage: 2,
   },
 ] as const;
 
@@ -167,4 +178,26 @@ const AGENT_ID_ALIASES: Record<string, string> = {
 export function getAgentById(id: string): AgentDefinition | undefined {
   const resolved = AGENT_ID_ALIASES[id] ?? id;
   return AGENT_CATALOG.find((a) => a.id === resolved);
+}
+
+/** Clamp leverage into platform bounds. */
+export function clampLeverage(value: number): number {
+  if (!Number.isFinite(value)) return FALLBACK_DEFAULT_LEVERAGE;
+  return Math.min(MAX_LEVERAGE, Math.max(MIN_LEVERAGE, Math.round(value)));
+}
+
+/**
+ * Resolve default leverage: agent override → bound strategy → platform fallback.
+ */
+export function resolveDefaultLeverage(
+  agent: Pick<AgentDefinition, "defaultLeverage" | "strategyId">,
+  strategyDefault?: number | null,
+): number {
+  if (agent.defaultLeverage != null && agent.defaultLeverage > 0) {
+    return clampLeverage(agent.defaultLeverage);
+  }
+  if (strategyDefault != null && strategyDefault > 0) {
+    return clampLeverage(strategyDefault);
+  }
+  return FALLBACK_DEFAULT_LEVERAGE;
 }

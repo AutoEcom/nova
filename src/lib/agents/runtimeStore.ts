@@ -32,6 +32,8 @@ export type AgentRuntimeState = {
   capitalUsd: number | null;
   /** Orchestrator session id when Live registration succeeded. */
   sessionId: string | null;
+  /** Global futures leverage for the active run. */
+  leverage: number | null;
   cumulativePnlPct: number;
   activePositions: ActivePosition[];
   latencyMs: number;
@@ -41,14 +43,14 @@ export type AgentRuntimeState = {
 };
 
 const g = globalThis as typeof globalThis & {
-  __evolgoAgentRuntimeV5?: Map<string, AgentRuntimeState>;
+  __evolgoAgentRuntimeV6?: Map<string, AgentRuntimeState>;
 };
 
 function store(): Map<string, AgentRuntimeState> {
-  if (!g.__evolgoAgentRuntimeV5) {
-    g.__evolgoAgentRuntimeV5 = new Map();
+  if (!g.__evolgoAgentRuntimeV6) {
+    g.__evolgoAgentRuntimeV6 = new Map();
   }
-  return g.__evolgoAgentRuntimeV5;
+  return g.__evolgoAgentRuntimeV6;
 }
 
 export function runtimeKey(agentId: string, strategyId: string): string {
@@ -70,6 +72,7 @@ function seedState(agentId: string, strategyId: string): AgentRuntimeState {
     mode: "dry_run",
     capitalUsd: null,
     sessionId: null,
+    leverage: null,
     cumulativePnlPct: strategy.telemetry.basePnl,
     activePositions: [],
     latencyMs: 34 + strategy.telemetry.latencyBias,
@@ -148,6 +151,7 @@ export function startAgent(
     mode?: ExecutionMode;
     capitalUsd?: number;
     sessionId?: string | null;
+    leverage?: number | null;
   } = {},
 ): AgentRuntimeState {
   const strategy = strategyOrThrow(strategyId);
@@ -164,6 +168,12 @@ export function startAgent(
     state.sessionId = options.sessionId;
   } else if (mode === "dry_run") {
     state.sessionId = null;
+  }
+  if (
+    typeof options.leverage === "number" &&
+    Number.isFinite(options.leverage)
+  ) {
+    state.leverage = options.leverage;
   }
   if (state.status === "live") return tickRuntime(agentId, strategy.id);
 
@@ -197,6 +207,7 @@ export function stopAgent(
   state.execSpeed = 0;
   state.activePositions = [];
   state.sessionId = null;
+  state.leverage = null;
   state.updatedAt = new Date().toISOString();
   store().set(runtimeKey(agentId, strategy.id), state);
   return cloneState(state);
@@ -267,6 +278,7 @@ export function metricsPayload(state: AgentRuntimeState) {
     mode: state.mode,
     capital_usd: state.capitalUsd,
     session_id: state.sessionId,
+    leverage: state.leverage,
     cumulative_pnl_pct: state.cumulativePnlPct,
     active_positions: state.activePositions,
     latency_ms: state.latencyMs,

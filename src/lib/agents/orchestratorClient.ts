@@ -8,6 +8,8 @@ export type RegisterLiveSessionInput = {
   strategyId: string;
   capitalUsd: number;
   walletAddress?: string | null;
+  /** Global futures leverage for the session (Phase 1). */
+  leverage?: number;
   venue?: {
     exchange?: "binance" | "okx";
     market?: "futures" | "spot";
@@ -69,6 +71,12 @@ export async function registerLiveSession(
     strategyId: input.strategyId,
     capitalUsd: input.capitalUsd,
     walletAddress: input.walletAddress?.trim() || null,
+    leverage: {
+      default:
+        typeof input.leverage === "number" && Number.isFinite(input.leverage)
+          ? Math.round(input.leverage)
+          : 3,
+    },
     venue: {
       exchange: input.venue?.exchange ?? "binance",
       market: input.venue?.market ?? "futures",
