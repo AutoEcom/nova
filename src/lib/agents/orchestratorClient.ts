@@ -1,6 +1,6 @@
 /**
  * Server-only client for the Evolgo orchestrator (Contabo backend).
- * Phase 1: live session registration only — no order routing.
+ * Live session register / stop — no order routing yet.
  */
 
 export type RegisterLiveSessionInput = {
@@ -160,6 +160,78 @@ export async function registerLiveSession(
     capitalUsd: json.capitalUsd ?? input.capitalUsd,
     walletAddress: json.walletAddress ?? input.walletAddress ?? null,
     registeredAt: json.registeredAt,
+    message: json.message,
+  };
+}
+
+export type StopLiveSessionResult = {
+  ok: true;
+  sessionId: string;
+  status: string;
+  message?: string;
+};
+
+/** Stop a registered Live session on the Evolgo orchestrator. */
+export async function stopLiveSession(
+  sessionId: string,
+): Promise<StopLiveSessionResult> {
+  const id = sessionId.trim();
+  if (!id) {
+    throw new OrchestratorError("sessionId required to stop Live session", 400);
+  }
+
+  const base = orchestratorBaseUrl();
+  const url = `${base}/v1/sessions/${encodeURIComponent(id)}/stop`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "network error";
+    throw new OrchestratorError(
+      `Orchestrator unreachable · ${detail}`,
+      503,
+    );
+  }
+
+  let json: {
+    ok?: boolean;
+    sessionId?: string;
+    status?: string;
+    message?: string;
+    error?: string;
+    detail?: string | unknown;
+  };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    throw new OrchestratorError(
+      `Orchestrator returned invalid JSON (HTTP ${res.status})`,
+      502,
+    );
+  }
+
+  if (!res.ok || json.ok === false) {
+    const detail =
+      typeof json.error === "string"
+        ? json.error
+        : typeof json.detail === "string"
+          ? json.detail
+          : `HTTP ${res.status}`;
+    throw new OrchestratorError(
+      `Live session stop failed · ${detail}`,
+      res.status >= 400 && res.status < 600 ? res.status : 502,
+    );
+  }
+
+  return {
+    ok: true,
+    sessionId: json.sessionId ?? id,
+    status: json.status ?? "stopped",
     message: json.message,
   };
 }

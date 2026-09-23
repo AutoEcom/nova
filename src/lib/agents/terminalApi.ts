@@ -109,14 +109,34 @@ export async function postAgentStart(
 export async function postAgentStop(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
-): Promise<TerminalMetrics & { message?: string }> {
+  options: {
+    mode?: "dry_run" | "live";
+    sessionId?: string | null;
+  } = {},
+): Promise<
+  TerminalMetrics & {
+    message?: string;
+    warning?: string | null;
+    orchestratorStopped?: boolean;
+  }
+> {
   const res = await fetch("/api/v1/agent/stop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, strategy }),
+    body: JSON.stringify({
+      agentId,
+      strategy,
+      mode: options.mode,
+      sessionId: options.sessionId ?? undefined,
+    }),
   });
   const json = await parseJson<
-    TerminalMetrics & { message?: string; error?: string }
+    TerminalMetrics & {
+      message?: string;
+      error?: string;
+      warning?: string | null;
+      orchestratorStopped?: boolean;
+    }
   >(res);
   if (!res.ok || !json.ok) {
     throw new Error(json.error ?? "Failed to stop agent");

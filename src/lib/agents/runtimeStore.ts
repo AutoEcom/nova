@@ -97,6 +97,15 @@ export function getOrCreateRuntime(
   return state;
 }
 
+/** Snapshot session/mode before stop clears them. */
+export function peekRuntimeSession(
+  agentId: string,
+  strategyId: string,
+): { mode: ExecutionMode; sessionId: string | null } {
+  const state = getOrCreateRuntime(agentId, strategyId);
+  return { mode: state.mode, sessionId: state.sessionId };
+}
+
 /** Advance live telemetry slightly on each metrics poll (strategy-isolated). */
 export function tickRuntime(
   agentId: string,

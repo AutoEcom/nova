@@ -578,13 +578,30 @@ export function AgentTerminalModal({
     if (!agent || actionBusy) return;
     setActionBusy("stop");
     try {
-      const next = await postAgentStop(agent.id, strategyId);
+      const sessionId = metrics?.sessionId ?? metrics?.session_id ?? null;
+      const next = await postAgentStop(agent.id, strategyId, {
+        mode: executionMode,
+        sessionId,
+      });
       applyMetrics(next);
-      pushLog(
-        "system",
-        `AGENT STOP · ${boundStrategy?.name ?? strategyId} · inventory held · mode ${executionMode === "live" ? "LIVE" : "DRY RUN"}`,
-      );
-      setToast({ tone: "ok", text: "Agent stopped" });
+      if (next.warning) {
+        pushLog(
+          "warn",
+          `AGENT STOP · local stub halted · ${next.warning}`,
+        );
+        setToast({
+          tone: "err",
+          text: next.warning,
+        });
+      } else {
+        pushLog(
+          "system",
+          next.orchestratorStopped
+            ? `AGENT STOP · ${boundStrategy?.name ?? strategyId} · LIVE · orchestrator halted · session ${sessionId ?? "—"}`
+            : `AGENT STOP · ${boundStrategy?.name ?? strategyId} · inventory held · mode ${executionMode === "live" ? "LIVE" : "DRY RUN"}`,
+        );
+        setToast({ tone: "ok", text: "Agent stopped" });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Stop failed";
       pushLog("warn", `AGENT STOP FAILED · ${msg}`);
