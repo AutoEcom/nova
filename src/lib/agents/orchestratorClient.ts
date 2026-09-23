@@ -56,6 +56,15 @@ function orchestratorBaseUrl(): string {
   return raw.replace(/\/$/, "");
 }
 
+/** Upstream SSE URL for a live session event stream. */
+export function orchestratorSessionEventsUrl(sessionId: string): string {
+  const id = sessionId.trim();
+  if (!id) {
+    throw new OrchestratorError("sessionId required for events stream", 400);
+  }
+  return `${orchestratorBaseUrl()}/v1/sessions/${encodeURIComponent(id)}/events`;
+}
+
 export async function registerLiveSession(
   input: RegisterLiveSessionInput,
 ): Promise<RegisterLiveSessionResult> {

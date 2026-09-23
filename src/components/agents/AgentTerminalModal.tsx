@@ -33,6 +33,7 @@ import {
   getStrategyById,
 } from "@/config/strategies";
 import {
+  agentEventsUrl,
   fetchTerminalMetrics,
   postAgentBacktest,
   postAgentStart,
@@ -64,6 +65,14 @@ type LogEntry = {
   message: string;
 };
 
+type OrchestratorSseEvent = {
+  type?: string;
+  message?: string;
+  level?: string;
+  ts?: string;
+  sessionId?: string;
+};
+
 const PERIODS: ChartPeriod[] = ["7D", "14D", "30D", "90D", "1Y"];
 
 const PERIOD_POINTS: Record<ChartPeriod, number> = {
@@ -84,6 +93,34 @@ const LOG_TONE: Record<LogKind, string> = {
   system: "text-foreground/85",
   warn: "text-loss",
 };
+
+function mapSseTypeToLogKind(type: string | undefined): LogKind {
+  switch ((type ?? "").toLowerCase()) {
+    case "signal":
+      return "exec";
+    case "status":
+      return "telemetry";
+    case "info":
+      return "system";
+    case "warning":
+    case "error":
+      return "warn";
+    default:
+      return "system";
+  }
+}
+
+function formatSseLogTime(ts: string | undefined): string {
+  if (!ts) return nowTime();
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return nowTime();
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
 
 const LOG_TAG: Record<LogKind, string> = {
   exec: "EXEC",
@@ -199,22 +236,95 @@ export function AgentTerminalModal({
   const logIdRef = useRef(0);
   const backtestFocusRef = useRef<HTMLDivElement | null>(null);
   const logStreamRef = useRef<HTMLDivElement | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
+  const sseActiveRef = useRef(false);
+  const sseWarnOnceRef = useRef(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
 
-  const pushLog = useCallback((kind: LogKind, message: string) => {
-    logIdRef.current += 1;
-    setLogs((prev) =>
-      [
-        ...prev,
-        {
-          id: `log-${logIdRef.current}`,
-          time: nowTime(),
-          kind,
-          message,
-        },
-      ].slice(-48),
-    );
+  const pushLog = useCallback(
+    (kind: LogKind, message: string, time?: string) => {
+      logIdRef.current += 1;
+      setLogs((prev) =>
+        [
+          ...prev,
+          {
+            id: `log-${logIdRef.current}`,
+            time: time ?? nowTime(),
+            kind,
+            message,
+          },
+        ].slice(-48),
+      );
+    },
+    [],
+  );
+
+  const closeLiveEvents = useCallback(() => {
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
+    sseActiveRef.current = false;
+    sseWarnOnceRef.current = false;
   }, []);
+
+  const openLiveEvents = useCallback(
+    (sessionId: string) => {
+      closeLiveEvents();
+      const id = sessionId.trim();
+      if (!id || typeof window === "undefined") return;
+
+      try {
+        const es = new EventSource(agentEventsUrl(id));
+        sseRef.current = es;
+        sseActiveRef.current = true;
+        sseWarnOnceRef.current = false;
+        pushLog("telemetry", `SSE · subscribed · session ${id}`);
+
+        es.onmessage = (ev) => {
+          if (!ev.data || ev.data === ":keepalive" || ev.data.startsWith(":")) {
+            return;
+          }
+          try {
+            const parsed = JSON.parse(ev.data) as OrchestratorSseEvent;
+            const kind = mapSseTypeToLogKind(parsed.type);
+            const label = (parsed.type ?? "event").toUpperCase();
+            const msg =
+              typeof parsed.message === "string" && parsed.message.trim()
+                ? parsed.message.trim()
+                : "(empty)";
+            pushLog(kind, `${label} · ${msg}`, formatSseLogTime(parsed.ts));
+          } catch {
+            pushLog("system", `SSE · ${ev.data}`);
+          }
+        };
+
+        es.onerror = () => {
+          // EventSource reconnects automatically; surface one warning max per stream.
+          if (!sseWarnOnceRef.current) {
+            sseWarnOnceRef.current = true;
+            pushLog(
+              "warn",
+              "SSE · stream interrupted · retrying · terminal continues",
+            );
+          }
+          if (es.readyState === EventSource.CLOSED) {
+            sseActiveRef.current = false;
+            sseRef.current = null;
+            pushLog(
+              "warn",
+              "SSE · connection closed · Live events unavailable",
+            );
+          }
+        };
+      } catch (err) {
+        sseActiveRef.current = false;
+        const detail = err instanceof Error ? err.message : "unknown error";
+        pushLog("warn", `SSE · failed to subscribe · ${detail}`);
+      }
+    },
+    [closeLiveEvents, pushLog],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -273,6 +383,7 @@ export function AgentTerminalModal({
       setExchangeOpen(false);
       setLiveConfirmOpen(false);
       setKeysGateOpen(false);
+      closeLiveEvents();
       return;
     }
     const prev = document.body.style.overflow;
@@ -280,7 +391,7 @@ export function AgentTerminalModal({
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [open]);
+  }, [open, closeLiveEvents]);
 
   useEffect(() => {
     if (!toast) return;
@@ -327,6 +438,7 @@ export function AgentTerminalModal({
     );
     setLeverageError(null);
     setMetrics(null);
+    closeLiveEvents();
     pollFailRef.current = 0;
     const priceNote =
       !agent.freeAccess && priceNova != null
@@ -366,7 +478,7 @@ export function AgentTerminalModal({
           : "CLEARANCE VERIFIED · capital allocation required before start",
       },
     ]);
-  }, [open, agent, boundStrategy?.name, boundStrategy?.defaultLeverage, strategyId, priceNova]);
+  }, [open, agent, boundStrategy?.name, boundStrategy?.defaultLeverage, strategyId, priceNova, closeLiveEvents]);
 
   const hasConnectedExchangeKeys = useCallback(async (): Promise<boolean> => {
     if (!isLoggedIn || !account.address) return false;
@@ -455,6 +567,8 @@ export function AgentTerminalModal({
         return;
       }
       pollFailRef.current += 1;
+      // While Live SSE is feeding the log, skip stub metrics degradation spam.
+      if (sseActiveRef.current) return;
       if (pollFailRef.current === 1 || pollFailRef.current % 3 === 0) {
         pushLog(
           "warn",
@@ -555,6 +669,11 @@ export function AgentTerminalModal({
         "exec",
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
       );
+      if (executionMode === "live" && sessionId) {
+        openLiveEvents(sessionId);
+      } else {
+        closeLiveEvents();
+      }
       setMobileControlsOpen(false);
       setToast({
         tone: "ok",
@@ -583,6 +702,7 @@ export function AgentTerminalModal({
         mode: executionMode,
         sessionId,
       });
+      closeLiveEvents();
       applyMetrics(next);
       if (next.warning) {
         pushLog(
@@ -604,6 +724,7 @@ export function AgentTerminalModal({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Stop failed";
+      closeLiveEvents();
       pushLog("warn", `AGENT STOP FAILED · ${msg}`);
       setToast({ tone: "err", text: msg });
     } finally {

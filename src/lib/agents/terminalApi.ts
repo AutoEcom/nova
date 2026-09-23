@@ -49,6 +49,12 @@ async function parseJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** BFF SSE URL for Live session events. */
+export function agentEventsUrl(sessionId: string): string {
+  const qs = new URLSearchParams({ sessionId: sessionId.trim() });
+  return `/api/v1/agent/events?${qs.toString()}`;
+}
+
 export async function fetchTerminalMetrics(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
