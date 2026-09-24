@@ -34,6 +34,7 @@ import {
 } from "@/config/strategies";
 import {
   agentEventsUrl,
+  fetchAgentPositions,
   fetchTerminalMetrics,
   postAgentBacktest,
   postAgentStart,
@@ -84,6 +85,7 @@ const PERIOD_POINTS: Record<ChartPeriod, number> = {
 };
 
 const POLL_MS = 5000;
+const POSITIONS_POLL_MS = 6000;
 const DEFAULT_CAPITAL = "1000";
 
 const LOG_TONE: Record<LogKind, string> = {
@@ -223,6 +225,9 @@ export function AgentTerminalModal({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
+  const [livePositions, setLivePositions] = useState<TerminalPosition[] | null>(
+    null,
+  );
   const [actionBusy, setActionBusy] = useState<"start" | "stop" | null>(null);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [backtestHighlight, setBacktestHighlight] = useState(false);
@@ -438,6 +443,7 @@ export function AgentTerminalModal({
     );
     setLeverageError(null);
     setMetrics(null);
+    setLivePositions(null);
     closeLiveEvents();
     pollFailRef.current = 0;
     const priceNote =
@@ -590,8 +596,49 @@ export function AgentTerminalModal({
   }, [open, agent, strategyId, applyMetrics, pushLog]);
 
   const runStatus: TerminalStatus = metrics?.status ?? "stopped";
+  const liveSessionId = metrics?.sessionId ?? metrics?.session_id ?? null;
+
+  // Live positions from orchestrator (Dry Run keeps stub metrics rows).
+  useEffect(() => {
+    if (
+      !open ||
+      !agent ||
+      executionMode !== "live" ||
+      runStatus !== "live" ||
+      !liveSessionId
+    ) {
+      if (executionMode !== "live" || runStatus !== "live" || !liveSessionId) {
+        setLivePositions(null);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const poll = async () => {
+      const next = await fetchAgentPositions(liveSessionId, controller.signal);
+      if (cancelled || next == null) return;
+      setLivePositions(next);
+    };
+
+    void poll();
+    const id = window.setInterval(() => {
+      void poll();
+    }, POSITIONS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(id);
+    };
+  }, [open, agent, executionMode, runStatus, liveSessionId]);
+
   const livePnl = metrics?.cumulative_pnl_pct ?? 0;
-  const positions: TerminalPosition[] = metrics?.active_positions ?? [];
+  const positions: TerminalPosition[] =
+    executionMode === "live" && liveSessionId && livePositions != null
+      ? livePositions
+      : (metrics?.active_positions ?? []);
   const latencyMs = metrics?.latency_ms ?? 0;
   const execSpeed = metrics?.exec_speed ?? 0;
   const tick = metrics?.tick ?? 0;
@@ -670,8 +717,10 @@ export function AgentTerminalModal({
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
       );
       if (executionMode === "live" && sessionId) {
+        setLivePositions([]);
         openLiveEvents(sessionId);
       } else {
+        setLivePositions(null);
         closeLiveEvents();
       }
       setMobileControlsOpen(false);
@@ -703,6 +752,7 @@ export function AgentTerminalModal({
         sessionId,
       });
       closeLiveEvents();
+      setLivePositions(null);
       applyMetrics(next);
       if (next.warning) {
         pushLog(

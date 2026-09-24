@@ -244,3 +244,97 @@ export async function stopLiveSession(
     message: json.message,
   };
 }
+
+export type OrchestratorLivePosition = {
+  tradeId?: number | string;
+  pair?: string;
+  side?: string;
+  entry?: number | string;
+  amount?: number | string;
+  stake?: number | string;
+  pnlPct?: number;
+  pnlAbs?: number;
+  leverage?: number;
+  isOpen?: boolean;
+  openDate?: string;
+  enterTag?: string;
+  stopLoss?: number | string;
+  hasOpenOrders?: boolean;
+};
+
+export type FetchLivePositionsResult = {
+  sessionId: string;
+  strategyId?: string;
+  positions: OrchestratorLivePosition[];
+  count: number;
+  source?: string;
+};
+
+/** Fetch open positions for a Live session from the orchestrator. */
+export async function fetchLiveSessionPositions(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<FetchLivePositionsResult> {
+  const id = sessionId.trim();
+  if (!id) {
+    throw new OrchestratorError("sessionId required for positions", 400);
+  }
+
+  const url = `${orchestratorBaseUrl()}/v1/sessions/${encodeURIComponent(id)}/positions`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      signal: signal ?? AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "network error";
+    throw new OrchestratorError(
+      `Orchestrator unreachable · ${detail}`,
+      503,
+    );
+  }
+
+  let json: {
+    sessionId?: string;
+    strategyId?: string;
+    positions?: OrchestratorLivePosition[];
+    count?: number;
+    source?: string;
+    ok?: boolean;
+    error?: string;
+    detail?: string | unknown;
+  };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    throw new OrchestratorError(
+      `Orchestrator returned invalid JSON (HTTP ${res.status})`,
+      502,
+    );
+  }
+
+  if (!res.ok) {
+    const detail =
+      typeof json.error === "string"
+        ? json.error
+        : typeof json.detail === "string"
+          ? json.detail
+          : `HTTP ${res.status}`;
+    throw new OrchestratorError(
+      `Live positions failed · ${detail}`,
+      res.status >= 400 && res.status < 600 ? res.status : 502,
+    );
+  }
+
+  const positions = Array.isArray(json.positions) ? json.positions : [];
+  return {
+    sessionId: json.sessionId ?? id,
+    strategyId: json.strategyId,
+    positions,
+    count: typeof json.count === "number" ? json.count : positions.length,
+    source: json.source,
+  };
+}

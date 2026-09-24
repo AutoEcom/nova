@@ -55,6 +55,90 @@ export function agentEventsUrl(sessionId: string): string {
   return `/api/v1/agent/events?${qs.toString()}`;
 }
 
+type OrchestratorPositionRaw = {
+  tradeId?: number | string;
+  pair?: string;
+  side?: string;
+  entry?: number | string;
+  amount?: number | string;
+  stake?: number | string;
+  pnlPct?: number;
+  hasOpenOrders?: boolean;
+  isOpen?: boolean;
+};
+
+function formatEntry(value: number | string | undefined): string {
+  if (value == null) return "—";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n >= 100 ? n.toFixed(2) : n.toPrecision(6);
+}
+
+function formatSize(
+  amount: number | string | undefined,
+  stake: number | string | undefined,
+): string {
+  if (amount != null && amount !== "") {
+    const n = typeof amount === "number" ? amount : Number(amount);
+    if (Number.isFinite(n)) return String(n);
+    return String(amount);
+  }
+  if (stake != null && stake !== "") {
+    const n = typeof stake === "number" ? stake : Number(stake);
+    if (Number.isFinite(n)) return `$${n.toFixed(2)}`;
+    return String(stake);
+  }
+  return "—";
+}
+
+/** Map orchestrator position rows into terminal table rows. */
+export function mapOrchestratorPositions(
+  rows: OrchestratorPositionRaw[],
+): TerminalPosition[] {
+  return rows
+    .filter((row) => row.isOpen !== false)
+    .map((row, idx) => {
+      const sideRaw = (row.side ?? "").toLowerCase();
+      const side: "Long" | "Short" =
+        sideRaw === "short" || sideRaw === "sell" ? "Short" : "Long";
+      return {
+        id: String(row.tradeId ?? `pos-${idx}`),
+        pair: row.pair?.trim() || "—",
+        side,
+        entry: formatEntry(row.entry),
+        size: formatSize(row.amount, row.stake),
+        pnl_pct:
+          typeof row.pnlPct === "number" && Number.isFinite(row.pnlPct)
+            ? row.pnlPct
+            : 0,
+        status: row.hasOpenOrders ? "Partial" : "Open",
+      };
+    });
+}
+
+/** Fetch Live positions via BFF proxy. Returns null on failure (caller keeps snapshot). */
+export async function fetchAgentPositions(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<TerminalPosition[] | null> {
+  try {
+    const qs = new URLSearchParams({ sessionId: sessionId.trim() });
+    const res = await fetch(`/api/v1/agent/positions?${qs.toString()}`, {
+      cache: "no-store",
+      signal,
+    });
+    const json = await parseJson<{
+      ok?: boolean;
+      positions?: TerminalPosition[];
+      error?: string;
+    }>(res);
+    if (!res.ok || !json.ok || !Array.isArray(json.positions)) return null;
+    return json.positions;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchTerminalMetrics(
   agentId: string,
   strategy: string = DEFAULT_STRATEGY_ID,
