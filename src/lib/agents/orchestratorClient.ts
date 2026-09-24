@@ -338,3 +338,91 @@ export async function fetchLiveSessionPositions(
     source: json.source,
   };
 }
+
+export type OrchestratorActiveSession = {
+  sessionId: string;
+  agentId?: string;
+  strategyId?: string;
+  capitalUsd?: number;
+  status?: string;
+  registeredAt?: string;
+  walletAddress?: string | null;
+};
+
+export type FetchActiveSessionsResult = {
+  ok: true;
+  sessions: OrchestratorActiveSession[];
+  count: number;
+};
+
+/** List active Live sessions for an agent/strategy on the orchestrator. */
+export async function fetchActiveSessions(
+  input: { agentId: string; strategyId: string },
+  signal?: AbortSignal,
+): Promise<FetchActiveSessionsResult> {
+  const agentId = input.agentId.trim();
+  const strategyId = input.strategyId.trim();
+  if (!agentId || !strategyId) {
+    throw new OrchestratorError(
+      "agentId and strategyId required for active sessions",
+      400,
+    );
+  }
+
+  const qs = new URLSearchParams({ agentId, strategyId });
+  const url = `${orchestratorBaseUrl()}/v1/sessions/active?${qs.toString()}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      signal: signal ?? AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "network error";
+    throw new OrchestratorError(
+      `Orchestrator unreachable · ${detail}`,
+      503,
+    );
+  }
+
+  let json: {
+    ok?: boolean;
+    sessions?: OrchestratorActiveSession[];
+    count?: number;
+    error?: string;
+    detail?: string | unknown;
+  };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    throw new OrchestratorError(
+      `Orchestrator returned invalid JSON (HTTP ${res.status})`,
+      502,
+    );
+  }
+
+  if (!res.ok || json.ok === false) {
+    const detail =
+      typeof json.error === "string"
+        ? json.error
+        : typeof json.detail === "string"
+          ? json.detail
+          : `HTTP ${res.status}`;
+    throw new OrchestratorError(
+      `Active sessions lookup failed · ${detail}`,
+      res.status >= 400 && res.status < 600 ? res.status : 502,
+    );
+  }
+
+  const sessions = Array.isArray(json.sessions)
+    ? json.sessions.filter((s) => Boolean(s?.sessionId))
+    : [];
+
+  return {
+    ok: true,
+    sessions,
+    count: typeof json.count === "number" ? json.count : sessions.length,
+  };
+}

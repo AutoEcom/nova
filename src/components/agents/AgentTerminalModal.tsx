@@ -34,6 +34,7 @@ import {
 } from "@/config/strategies";
 import {
   agentEventsUrl,
+  fetchActiveAgentSession,
   fetchAgentPositions,
   fetchTerminalMetrics,
   postAgentBacktest,
@@ -244,6 +245,8 @@ export function AgentTerminalModal({
   const sseRef = useRef<EventSource | null>(null);
   const sseActiveRef = useRef(false);
   const sseWarnOnceRef = useRef(false);
+  /** Prevents empty serverless runtimeStore metrics from demoting a Live session. */
+  const liveSessionGuardRef = useRef<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const pushLog = useCallback(
@@ -446,6 +449,7 @@ export function AgentTerminalModal({
     setLivePositions(null);
     closeLiveEvents();
     pollFailRef.current = 0;
+    liveSessionGuardRef.current = null;
     const priceNote =
       !agent.freeAccess && priceNova != null
         ? ` · ${priceNova.toLocaleString()} $NOVA / mo orchestration`
@@ -485,6 +489,84 @@ export function AgentTerminalModal({
       },
     ]);
   }, [open, agent, boundStrategy?.name, boundStrategy?.defaultLeverage, strategyId, priceNova, closeLiveEvents]);
+
+  // Recover Live session from orchestrator when Terminal re-opens (serverless store may be empty).
+  useEffect(() => {
+    if (!open || !agent) return;
+    // Skip if this mount already has a Live session (start or prior recover).
+    if (liveSessionGuardRef.current) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const recover = async () => {
+      const result = await fetchActiveAgentSession(
+        agent.id,
+        strategyId,
+        controller.signal,
+      );
+      if (cancelled || !result) return;
+
+      // Soft-fail / no session → keep Dry Run default from boot effect.
+      if (!result.recovered || !result.session?.sessionId) return;
+
+      const sessionId = result.session.sessionId;
+      liveSessionGuardRef.current = sessionId;
+      setExecutionMode("live");
+      if (
+        typeof result.session.capitalUsd === "number" &&
+        Number.isFinite(result.session.capitalUsd)
+      ) {
+        setCapitalInput(String(result.session.capitalUsd));
+      }
+      applyMetrics({
+        ok: true,
+        agentId: result.agentId ?? agent.id,
+        strategy: result.strategy ?? result.strategy_id ?? strategyId,
+        strategy_id: result.strategy_id ?? result.strategy ?? strategyId,
+        status: "live",
+        mode: "live",
+        session_id: sessionId,
+        sessionId,
+        capital_usd:
+          result.capital_usd ??
+          (typeof result.session.capitalUsd === "number"
+            ? result.session.capitalUsd
+            : null),
+        leverage: result.leverage ?? null,
+        cumulative_pnl_pct: result.cumulative_pnl_pct ?? 0,
+        active_positions: [],
+        latency_ms: result.latency_ms ?? 0,
+        exec_speed: result.exec_speed ?? 0,
+        tick: result.tick ?? 0,
+        updated_at: result.updated_at,
+      });
+      setLivePositions([]);
+      openLiveEvents(sessionId);
+      pushLog(
+        "telemetry",
+        `SESSION RECOVERED · ${sessionId} · Live runner still active`,
+      );
+      setToast({
+        tone: "ok",
+        text: `Live session recovered · ${sessionId}`,
+      });
+    };
+
+    void recover();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    open,
+    agent,
+    strategyId,
+    applyMetrics,
+    openLiveEvents,
+    pushLog,
+  ]);
 
   const hasConnectedExchangeKeys = useCallback(async (): Promise<boolean> => {
     if (!isLoggedIn || !account.address) return false;
@@ -568,7 +650,19 @@ export function AgentTerminalModal({
       );
       if (cancelled) return;
       if (next) {
+        const guard = liveSessionGuardRef.current;
+        const nextSession = next.sessionId ?? next.session_id ?? null;
+        // Empty serverless store must not demote an active Live/recovered session.
+        if (
+          guard &&
+          (next.status === "stopped" || !nextSession || nextSession !== guard)
+        ) {
+          return;
+        }
         pollFailRef.current = 0;
+        if (next.status === "live" && nextSession) {
+          liveSessionGuardRef.current = nextSession;
+        }
         applyMetrics(next);
         return;
       }
@@ -717,9 +811,11 @@ export function AgentTerminalModal({
         `AGENT START · ${boundStrategy?.name ?? strategyId} · capital $${capital.toLocaleString()} · ${modeLabel}`,
       );
       if (executionMode === "live" && sessionId) {
+        liveSessionGuardRef.current = sessionId;
         setLivePositions([]);
         openLiveEvents(sessionId);
       } else {
+        liveSessionGuardRef.current = null;
         setLivePositions(null);
         closeLiveEvents();
       }
@@ -753,6 +849,7 @@ export function AgentTerminalModal({
       });
       closeLiveEvents();
       setLivePositions(null);
+      liveSessionGuardRef.current = null;
       applyMetrics(next);
       if (next.warning) {
         pushLog(

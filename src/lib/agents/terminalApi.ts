@@ -269,3 +269,48 @@ export async function postAgentBacktest(
   }
   return { ok: true, result: json.result, message: json.message };
 }
+
+export type ActiveAgentSession = {
+  sessionId: string;
+  agentId: string;
+  strategyId: string;
+  capitalUsd: number | null;
+  status: string;
+  registeredAt: string | null;
+  walletAddress: string | null;
+};
+
+export type ActiveAgentSessionResult = {
+  ok: true;
+  recovered: boolean;
+  session: ActiveAgentSession | null;
+  warning?: string;
+} & Partial<TerminalMetrics>;
+
+/**
+ * Recover an active Live orchestrator session for this agent/strategy.
+ * Soft-fails to recovered:false (caller keeps Dry Run default).
+ */
+export async function fetchActiveAgentSession(
+  agentId: string,
+  strategy: string = DEFAULT_STRATEGY_ID,
+  signal?: AbortSignal,
+): Promise<ActiveAgentSessionResult | null> {
+  try {
+    const qs = new URLSearchParams({
+      agentId,
+      strategyId: strategy,
+    });
+    const res = await fetch(
+      `/api/v1/agent/session/active?${qs.toString()}`,
+      { cache: "no-store", signal },
+    );
+    const json = await parseJson<
+      ActiveAgentSessionResult & { error?: string }
+    >(res);
+    if (!res.ok || !json.ok) return null;
+    return json;
+  } catch {
+    return null;
+  }
+}
