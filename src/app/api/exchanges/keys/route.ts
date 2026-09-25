@@ -71,11 +71,13 @@ export async function POST(request: Request) {
       exchangeId?: string;
       apiKey?: string;
       apiSecret?: string;
+      passphrase?: string;
     };
     const address = body.address?.trim() ?? "";
     const exchangeId = body.exchangeId?.trim() ?? "";
     const apiKey = body.apiKey ?? "";
     const apiSecret = body.apiSecret ?? "";
+    const passphrase = body.passphrase ?? "";
 
     if (!validAddress(address)) {
       return NextResponse.json(
@@ -84,7 +86,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const check = validateExchangeCredentials({ exchangeId, apiKey, apiSecret });
+    const check = validateExchangeCredentials({
+      exchangeId,
+      apiKey,
+      apiSecret,
+      passphrase,
+    });
     if (!check.ok) {
       return NextResponse.json({ ok: false, error: check.error }, { status: 400 });
     }
@@ -93,6 +100,7 @@ export async function POST(request: Request) {
       exchangeId,
       apiKey,
       apiSecret,
+      passphrase,
     });
     if (!handshake.ok) {
       return NextResponse.json(
@@ -106,6 +114,7 @@ export async function POST(request: Request) {
       exchangeId,
       apiKey,
       apiSecret,
+      passphrase,
     });
 
     const exchange = getExchangeById(exchangeId);

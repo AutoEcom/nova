@@ -7,9 +7,11 @@ import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetI
 import { GlowButton } from "@/components/ui/GlowButton";
 import { ExchangeMark } from "@/components/exchanges/ExchangeLogos";
 import {
-  EVOLGO_EXCHANGE_WHITELIST_IP,
+  BINANCE_MULTI_ASSET_NOTE,
   EXCHANGE_CATALOG,
+  exchangeSecurityChecklist,
   getExchangeById,
+  isOkxExchange,
 } from "@/config/exchanges";
 import Link from "next/link";
 import { useWalletUI } from "@/providers/WalletUIProvider";
@@ -26,6 +28,8 @@ type Connection = {
 type ExchangeApiModalProps = {
   open: boolean;
   onClose: () => void;
+  /** Preselect a venue when opening from Terminal CTA (e.g. okx-futures). */
+  initialExchangeId?: string | null;
 };
 
 type VerifyPhase = "idle" | "verifying" | "success" | "error";
@@ -40,7 +44,11 @@ function statusBadge(params: {
   return params.latencyMs != null ? `${base} · ${params.latencyMs}ms` : base;
 }
 
-export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
+export function ExchangeApiModal({
+  open,
+  onClose,
+  initialExchangeId = null,
+}: ExchangeApiModalProps) {
   const isLoggedIn = useGetIsLoggedIn();
   const account = useGetAccount();
   const { openConnect } = useWalletUI();
@@ -49,7 +57,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [showSecret, setShowSecret] = useState(false);
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [phase, setPhase] = useState<VerifyPhase>("idle");
   const [verifyStep, setVerifyStep] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +71,9 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
 
   const selectedExchange = getExchangeById(exchangeId) ?? EXCHANGE_CATALOG[0]!;
   const busy = phase === "verifying";
+  const isOkx = isOkxExchange(exchangeId);
+  const isBinance = selectedExchange.venue === "binance";
+  const checklist = exchangeSecurityChecklist(exchangeId);
 
   const loadConnections = useCallback(async (address: string) => {
     try {
@@ -94,12 +107,15 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
       savingRef.current = false;
       return;
     }
+    if (initialExchangeId && getExchangeById(initialExchangeId)) {
+      setExchangeId(initialExchangeId);
+    }
     if (isLoggedIn && account.address) {
       void loadConnections(account.address);
     } else {
       setConnections([]);
     }
-  }, [open, isLoggedIn, account.address, loadConnections]);
+  }, [open, isLoggedIn, account.address, loadConnections, initialExchangeId]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -137,6 +153,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
 
     const key = apiKey.trim();
     const secret = apiSecret.trim();
+    const pass = passphrase.trim();
     if (!key || !secret) {
       setPhase("error");
       setError("API key and secret are required");
@@ -146,6 +163,18 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
     if (key.length < 12 || secret.length < 12) {
       setPhase("error");
       setError("Credentials look incomplete — check key & secret length");
+      setFlash(null);
+      return;
+    }
+    if (isOkx && !pass) {
+      setPhase("error");
+      setError("OKX passphrase is required");
+      setFlash(null);
+      return;
+    }
+    if (selectedExchange.availability !== "live") {
+      setPhase("error");
+      setError(`${selectedExchange.name} connect is coming soon`);
       setFlash(null);
       return;
     }
@@ -165,6 +194,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
           exchangeId,
           apiKey: key,
           apiSecret: secret,
+          ...(isOkx ? { passphrase: pass } : {}),
         }),
       });
 
@@ -211,6 +241,7 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
       setVerifyStep("");
       setApiKey("");
       setApiSecret("");
+      setPassphrase("");
       await loadConnections(account.address);
     } catch (err) {
       setPhase("error");
@@ -371,24 +402,37 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                     >
                       {EXCHANGE_CATALOG.map((ex) => {
                         const active = ex.id === exchangeId;
+                        const soon = ex.availability === "coming_soon";
                         return (
                           <li key={ex.id} role="option" aria-selected={active}>
                             <button
                               type="button"
+                              disabled={soon}
                               onClick={() => {
+                                if (soon) return;
                                 setExchangeId(ex.id);
                                 setPickerOpen(false);
+                                setPassphrase("");
                               }}
                               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                                active
-                                  ? "bg-cyan/15 text-cyan"
-                                  : "text-foreground hover:bg-white/[0.05]"
+                                soon
+                                  ? "cursor-not-allowed opacity-45"
+                                  : active
+                                    ? "bg-cyan/15 text-cyan"
+                                    : "text-foreground hover:bg-white/[0.05]"
                               }`}
                             >
                               <ExchangeMark exchangeId={ex.id} size={32} />
-                              <span className="min-w-0">
-                                <span className="block font-display text-sm font-semibold">
-                                  {ex.name}
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="block font-display text-sm font-semibold">
+                                    {ex.name}
+                                  </span>
+                                  {soon && (
+                                    <span className="rounded border border-white/15 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-muted">
+                                      Soon
+                                    </span>
+                                  )}
                                 </span>
                                 <span
                                   className={`mt-0.5 block font-mono text-[10px] ${
@@ -409,26 +453,20 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
 
               <div className="rounded-xl border border-amber-300/30 bg-amber-300/[0.07] px-3.5 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-200">
-                  API key security
+                  API key security · {selectedExchange.name}
                 </p>
                 <ul className="mt-2 space-y-1.5 font-mono text-[11px] leading-5 text-foreground/90">
-                  <li>
-                    Whitelist <span className="text-amber-100">only</span> Evolgo
-                    IP:{" "}
-                    <code className="rounded bg-black/35 px-1.5 py-0.5 text-cyan">
-                      {EVOLGO_EXCHANGE_WHITELIST_IP}
-                    </code>
-                  </li>
-                  <li>
-                    Enable:{" "}
-                    <span className="text-amber-100">Reading + Futures</span>
-                  </li>
-                  <li>
-                    Disable:{" "}
-                    <span className="font-semibold text-loss">Withdrawals</span>{" "}
-                    (required)
-                  </li>
+                  {checklist.map((item) => (
+                    <li key={item}>
+                      <span className="text-amber-100/90">{item}</span>
+                    </li>
+                  ))}
                 </ul>
+                {isBinance && (
+                  <p className="mt-2.5 font-mono text-[11px] leading-5 text-amber-100/85">
+                    {BINANCE_MULTI_ASSET_NOTE}
+                  </p>
+                )}
                 <Link
                   href="/docs/exchange-setup"
                   target="_blank"
@@ -488,6 +526,38 @@ export function ExchangeApiModal({ open, onClose }: ExchangeApiModalProps) {
                   </button>
                 </div>
               </label>
+
+              {isOkx && (
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                    Passphrase <span className="text-amber-200">(required)</span>
+                  </span>
+                  <div className="mt-1.5 flex gap-2">
+                    <input
+                      type={showPassphrase ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      disabled={busy}
+                      value={passphrase}
+                      onChange={(e) => {
+                        setPassphrase(e.target.value);
+                        if (phase === "error") setPhase("idle");
+                        setError(null);
+                      }}
+                      placeholder="OKX API passphrase"
+                      className="min-w-0 flex-1 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40 disabled:opacity-60"
+                    />
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setShowPassphrase((v) => !v)}
+                      className="shrink-0 rounded-xl border border-white/12 px-3 font-mono text-[10px] uppercase tracking-wider text-muted hover:text-cyan disabled:opacity-60"
+                    >
+                      {showPassphrase ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </label>
+              )}
 
               {phase === "verifying" && verifyStep && (
                 <div className="flex items-center gap-2 rounded-xl border border-cyan/25 bg-cyan/10 px-3 py-2.5">

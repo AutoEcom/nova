@@ -10,6 +10,7 @@ import {
   isAgentLaunchable,
   type AgentDefinition,
 } from "@/config/agents";
+import { formatVenuesLine } from "@/config/exchanges";
 
 const accentRing: Record<AgentDefinition["accent"], string> = {
   cyan: "border-cyan/25 hover:border-cyan/40",
@@ -142,6 +143,9 @@ export function AgentCard({
           <h3 className="mt-2 font-display text-sm font-semibold tracking-wide text-foreground sm:text-base">
             {agent.name}
           </h3>
+          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+            {formatVenuesLine(agent.supportedVenues)}
+          </p>
         </div>
 
         <div className="hidden shrink-0 text-right sm:block">

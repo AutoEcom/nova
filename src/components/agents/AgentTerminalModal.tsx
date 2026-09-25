@@ -32,6 +32,7 @@ import {
   BINANCE_TOP10_FUTURES,
   getStrategyById,
 } from "@/config/strategies";
+import { exchangeIdForVenue } from "@/config/exchanges";
 import {
   agentEventsUrl,
   fetchActiveAgentSession,
@@ -45,6 +46,9 @@ import {
   type TerminalStatus,
 } from "@/lib/agents/terminalApi";
 import { useWalletUI } from "@/providers/WalletUIProvider";
+
+const MULTI_ASSET_WARNING =
+  "Binance Multi-Asset is not supported · Connect OKX for live routing in your region";
 
 type AgentTerminalModalProps = {
   open: boolean;
@@ -225,6 +229,13 @@ export function AgentTerminalModal({
   const [leverageError, setLeverageError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [exchangeOpen, setExchangeOpen] = useState(false);
+  const [exchangePrefillId, setExchangePrefillId] = useState<string | null>(
+    null,
+  );
+  const [connectedVenueName, setConnectedVenueName] = useState<string | null>(
+    null,
+  );
+  const [multiAssetTipOpen, setMultiAssetTipOpen] = useState(false);
   const [metrics, setMetrics] = useState<TerminalMetrics | null>(null);
   const [livePositions, setLivePositions] = useState<TerminalPosition[] | null>(
     null,
@@ -450,6 +461,9 @@ export function AgentTerminalModal({
     closeLiveEvents();
     pollFailRef.current = 0;
     liveSessionGuardRef.current = null;
+    setConnectedVenueName(null);
+    setMultiAssetTipOpen(false);
+    setExchangePrefillId(null);
     const priceNote =
       !agent.freeAccess && priceNova != null
         ? ` · ${priceNova.toLocaleString()} $NOVA / mo orchestration`
@@ -577,14 +591,41 @@ export function AgentTerminalModal({
       );
       const json = (await res.json()) as {
         ok?: boolean;
-        connections?: Array<{ status?: string }>;
+        connections?: Array<{
+          status?: string;
+          exchangeName?: string;
+          exchangeId?: string;
+        }>;
       };
-      if (!res.ok || !json.ok) return false;
-      return (json.connections ?? []).some((c) => c.status === "connected");
+      if (!res.ok || !json.ok) {
+        setConnectedVenueName(null);
+        return false;
+      }
+      const connected = (json.connections ?? []).filter(
+        (c) => c.status === "connected",
+      );
+      setConnectedVenueName(connected[0]?.exchangeName ?? null);
+      return connected.length > 0;
     } catch {
+      setConnectedVenueName(null);
       return false;
     }
   }, [isLoggedIn, account.address]);
+
+  const openExchangeModal = useCallback((prefillExchangeId?: string | null) => {
+    setExchangePrefillId(prefillExchangeId ?? null);
+    setExchangeOpen(true);
+  }, []);
+
+  // Refresh venue badge when Terminal opens / wallet changes.
+  useEffect(() => {
+    if (!open) return;
+    if (!isLoggedIn || !account.address) {
+      setConnectedVenueName(null);
+      return;
+    }
+    void hasConnectedExchangeKeys();
+  }, [open, isLoggedIn, account.address, hasConnectedExchangeKeys]);
 
   const requestLiveMode = useCallback(async () => {
     if (executionMode === "live") return;
@@ -601,10 +642,12 @@ export function AgentTerminalModal({
       const ok = await hasConnectedExchangeKeys();
       if (!ok) {
         setKeysGateOpen(true);
+        setMultiAssetTipOpen(true);
         pushLog(
           "warn",
           "LIVE BLOCKED · no verified exchange API keys · connect a venue first",
         );
+        pushLog("warn", MULTI_ASSET_WARNING);
         return;
       }
       setLiveConfirmOpen(true);
@@ -782,6 +825,7 @@ export function AgentTerminalModal({
       const ok = await hasConnectedExchangeKeys();
       if (!ok) {
         setKeysGateOpen(true);
+        setMultiAssetTipOpen(true);
         pushLog(
           "warn",
           "LIVE START BLOCKED · connect & verify exchange API keys first",
@@ -965,6 +1009,20 @@ export function AgentTerminalModal({
                       </p>
                       <StatusBadge status={runStatus} />
                       <ModeBadge mode={executionMode} />
+                      <span
+                        className={`inline-flex rounded-md border px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider ${
+                          connectedVenueName
+                            ? "border-cyan/40 bg-cyan/12 text-cyan"
+                            : "border-white/15 bg-white/[0.04] text-muted"
+                        }`}
+                        title={
+                          executionMode === "dry_run"
+                            ? "Venue badge · informational in Dry Run"
+                            : "Connected futures venue"
+                        }
+                      >
+                        {connectedVenueName ?? "No exchange"}
+                      </span>
                       {priceNova != null && (
                         <span className="inline-flex rounded-md border border-purple/40 bg-purple/12 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-purple">
                           {priceNova.toLocaleString()} NOVA / mo
@@ -1006,7 +1064,7 @@ export function AgentTerminalModal({
                     <GlowButton
                       variant="purple"
                       className="!px-3 !py-2 !text-[11px]"
-                      onClick={() => setExchangeOpen(true)}
+                      onClick={() => openExchangeModal()}
                     >
                       Exchange / API
                     </GlowButton>
@@ -1024,7 +1082,7 @@ export function AgentTerminalModal({
                     <GlowButton
                       variant="purple"
                       className="!flex-1 !px-3 !py-2.5 !text-[11px]"
-                      onClick={() => setExchangeOpen(true)}
+                      onClick={() => openExchangeModal()}
                     >
                       Exchange / API
                     </GlowButton>
@@ -1038,6 +1096,33 @@ export function AgentTerminalModal({
                   </div>
                 </div>
               </header>
+
+              {multiAssetTipOpen && (
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-300/25 bg-amber-300/[0.06] px-4 py-2.5 sm:px-5">
+                  <p className="min-w-0 flex-1 font-mono text-[11px] leading-5 text-amber-100">
+                    {MULTI_ASSET_WARNING}
+                  </p>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <GlowButton
+                      variant="purple"
+                      className="!px-3 !py-1.5 !text-[10px]"
+                      onClick={() => {
+                        setMultiAssetTipOpen(false);
+                        openExchangeModal(exchangeIdForVenue("okx"));
+                      }}
+                    >
+                      Connect OKX
+                    </GlowButton>
+                    <button
+                      type="button"
+                      className="rounded-lg px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted hover:text-foreground"
+                      onClick={() => setMultiAssetTipOpen(false)}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Actions strip — mobile compact toggle; desktop always expanded */}
               <div
@@ -1615,7 +1700,12 @@ export function AgentTerminalModal({
       </AnimatePresence>
       <ExchangeApiModal
         open={exchangeOpen && open}
-        onClose={() => setExchangeOpen(false)}
+        onClose={() => {
+          setExchangeOpen(false);
+          setExchangePrefillId(null);
+          void hasConnectedExchangeKeys();
+        }}
+        initialExchangeId={exchangePrefillId}
       />
 
       <AnimatePresence>
@@ -1712,16 +1802,29 @@ export function AgentTerminalModal({
                 Live mode needs a connected futures venue (Binance / OKX). Save
                 &amp; Test your keys, then retry enabling Live.
               </p>
+              <p className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/[0.07] px-3 py-2.5 font-mono text-[11px] leading-5 text-amber-100">
+                {MULTI_ASSET_WARNING}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <GlowButton
                   variant="purple"
                   className="!px-4 !py-2.5 !text-xs"
                   onClick={() => {
                     setKeysGateOpen(false);
-                    setExchangeOpen(true);
+                    openExchangeModal(exchangeIdForVenue("okx"));
                   }}
                 >
-                  Connect Exchange
+                  Connect OKX
+                </GlowButton>
+                <GlowButton
+                  variant="ghost"
+                  className="!px-4 !py-2.5 !text-xs"
+                  onClick={() => {
+                    setKeysGateOpen(false);
+                    openExchangeModal();
+                  }}
+                >
+                  All venues
                 </GlowButton>
                 <GlowButton
                   variant="ghost"

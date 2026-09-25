@@ -1,4 +1,4 @@
-import { getExchangeById } from "@/config/exchanges";
+import { getExchangeById, isOkxExchange } from "@/config/exchanges";
 import { encryptSecret, hintFromApiKey } from "@/lib/crypto/secrets";
 import { createServiceSupabaseClient } from "@/lib/supabase/server";
 
@@ -59,14 +59,35 @@ function rowToPublic(row: Row): ExchangeConnectionPublic {
   };
 }
 
+/**
+ * Pack secret (+ optional OKX passphrase) into the encrypted secret column.
+ * Versioned envelope keeps schema stable without a migration.
+ */
+export function packExchangeSecret(params: {
+  apiSecret: string;
+  passphrase?: string | null;
+}): string {
+  const secret = params.apiSecret.trim();
+  const passphrase = params.passphrase?.trim() ?? "";
+  if (passphrase) {
+    return JSON.stringify({ v: 1, secret, passphrase });
+  }
+  return secret;
+}
+
 /** Lightweight format validation — no live CEX call from server in v1. */
 export function validateExchangeCredentials(params: {
   exchangeId: string;
   apiKey: string;
   apiSecret: string;
+  passphrase?: string | null;
 }): { ok: true } | { ok: false; error: string } {
-  if (!getExchangeById(params.exchangeId)) {
+  const exchange = getExchangeById(params.exchangeId);
+  if (!exchange) {
     return { ok: false, error: "Unknown exchange" };
+  }
+  if (exchange.availability !== "live") {
+    return { ok: false, error: `${exchange.name} connect is not available yet` };
   }
   const key = params.apiKey.trim();
   const secret = params.apiSecret.trim();
@@ -82,7 +103,6 @@ export function validateExchangeCredentials(params: {
   if (/\s/.test(key) || /\s/.test(secret)) {
     return { ok: false, error: "Credentials must not contain spaces" };
   }
-  // Reject obvious placeholders / malformed junk.
   if (/^(test|xxx|your[_-]?key|placeholder)/i.test(key)) {
     return { ok: false, error: "API key appears to be a placeholder" };
   }
@@ -91,6 +111,15 @@ export function validateExchangeCredentials(params: {
       ok: false,
       error: "Credentials contain invalid characters for exchange APIs",
     };
+  }
+  if (isOkxExchange(params.exchangeId)) {
+    const passphrase = params.passphrase?.trim() ?? "";
+    if (!passphrase) {
+      return { ok: false, error: "OKX passphrase is required" };
+    }
+    if (passphrase.length < 4) {
+      return { ok: false, error: "OKX passphrase looks too short" };
+    }
   }
   return { ok: true };
 }
@@ -103,6 +132,7 @@ export async function verifyExchangeHandshake(params: {
   exchangeId: string;
   apiKey: string;
   apiSecret: string;
+  passphrase?: string | null;
 }): Promise<
   | { ok: true; scopes: string; latencyMs: number; endpoint: string }
   | { ok: false; error: string }
@@ -155,6 +185,7 @@ export async function upsertExchangeConnection(params: {
   exchangeId: string;
   apiKey: string;
   apiSecret: string;
+  passphrase?: string | null;
 }): Promise<ExchangeConnectionPublic> {
   const wallet = params.walletAddress.trim().toLowerCase();
   if (!isBech32Address(wallet)) {
@@ -165,6 +196,11 @@ export async function upsertExchangeConnection(params: {
   if (!check.ok) throw new Error(check.error);
 
   const now = new Date().toISOString();
+  const packedSecret = packExchangeSecret({
+    apiSecret: params.apiSecret,
+    passphrase: isOkxExchange(params.exchangeId) ? params.passphrase : null,
+  });
+
   const { data, error } = await db()
     .from("exchange_api_keys")
     .upsert(
@@ -172,7 +208,7 @@ export async function upsertExchangeConnection(params: {
         wallet_address: wallet,
         exchange_id: params.exchangeId,
         api_key_encrypted: encryptSecret(params.apiKey.trim()),
-        api_secret_encrypted: encryptSecret(params.apiSecret.trim()),
+        api_secret_encrypted: encryptSecret(packedSecret),
         api_key_hint: hintFromApiKey(params.apiKey),
         status: "connected",
         last_tested_at: now,

@@ -2,6 +2,7 @@
  * Agent marketplace catalog — pricing + display metrics for /dashboard/agents.
  */
 
+import type { EvolgoVenue } from "@/config/exchanges";
 import { NOVA_PRICE_IN_USDC } from "@/config/network";
 
 export type AgentAvailability = "live" | "in_training" | "coming_soon";
@@ -15,6 +16,10 @@ export type AgentDefinition = {
   blurb: string;
   /** Bound orchestrator strategy — dedicated terminal workspace (no in-terminal switching). */
   strategyId: string;
+  /** Venues this agent can execute on (futures). */
+  supportedVenues: EvolgoVenue[];
+  /** Soft default when user has no preference. */
+  preferredVenue?: EvolgoVenue;
   /** Display metrics (telemetry surface). */
   winRate: number;
   pnlPercent: number;
@@ -37,6 +42,8 @@ export type AgentDefinition = {
   /** Default futures leverage for Live sessions (user-overridable in terminal). */
   defaultLeverage?: number;
 };
+
+const DEFAULT_VENUES: EvolgoVenue[] = ["binance", "okx"];
 
 /** Platform minimum capital allocation (USD) for agent start / backtest. */
 export const MIN_CAPITAL_ALLOCATION_USD = 100;
@@ -99,6 +106,8 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     blurb:
       "Adaptive multi-timeframe intelligence combining Supertrend structure, EMA regime filters, and real-time EvolgoAI orchestration. Designed for balanced risk-adjusted performance across major Binance Futures pairs.",
     strategyId: "evolgo-adaptive-mtf",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     winRate: 86.1,
     pnlPercent: 10.4,
     maxDrawdownPct: -8.8,
@@ -119,6 +128,8 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     blurb:
       "Multi-signal consensus orchestrator across the top liquid Binance Futures markets. Mean reversion, microstructure filters, and continuous risk gating in one dedicated workspace.",
     strategyId: "evolgo-consensus",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     winRate: 68.4,
     pnlPercent: 42.7,
     maxDrawdownPct: -14.2,
@@ -138,6 +149,8 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     blurb:
       "Impulse and breakout hunter for short-lived momentum bursts. Currently in training on high-volatility futures regimes.",
     strategyId: "evolgo-pump-hunter",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     winRate: 61.2,
     pnlPercent: 55.1,
     maxDrawdownPct: -22.8,
@@ -156,6 +169,8 @@ export const AGENT_CATALOG: readonly AgentDefinition[] = [
     blurb:
       "Defensive allocator prioritizing drawdown control and steady compounding. Scheduled for the next training cohort.",
     strategyId: "evolgo-consensus",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     winRate: 74.9,
     pnlPercent: 18.3,
     maxDrawdownPct: -8.6,

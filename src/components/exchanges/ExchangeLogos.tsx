@@ -35,6 +35,21 @@ export function OkxMark({ className = "", size = 32 }: MarkProps) {
   );
 }
 
+/** Official Bybit logo mark (brand-inspired; full SVG on Wikimedia Commons). */
+export function BybitMark({ className = "", size = 32 }: MarkProps) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/exchanges/bybit.svg"
+      alt=""
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-md object-contain ${className}`}
+      aria-hidden
+    />
+  );
+}
+
 export function ExchangeMark({
   exchangeId,
   className = "",
@@ -46,6 +61,9 @@ export function ExchangeMark({
 }) {
   if (exchangeId === "okx-futures") {
     return <OkxMark className={className} size={size} />;
+  }
+  if (exchangeId === "bybit-futures") {
+    return <BybitMark className={className} size={size} />;
   }
   return <BinanceMark className={className} size={size} />;
 }

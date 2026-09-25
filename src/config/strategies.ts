@@ -7,6 +7,8 @@
  * Run Backtest flow with period + capital (≥ $100). See AgentTerminalModal header.
  */
 
+import type { EvolgoVenue } from "@/config/exchanges";
+
 /** Top 10 liquid Binance USD-M Futures pairs (Consensus default universe). */
 export const BINANCE_TOP10_FUTURES = [
   "BTC/USDT",
@@ -41,6 +43,10 @@ export type StrategyDefinition = {
   name: string;
   blurb: string;
   status: StrategyStatus;
+  /** Venues this strategy can execute on (futures). */
+  supportedVenues: EvolgoVenue[];
+  /** Soft default when user has no preference. */
+  preferredVenue?: EvolgoVenue;
   /** Default futures leverage when agent does not override. */
   defaultLeverage?: number;
   /** Seed for stub telemetry isolation */
@@ -51,6 +57,8 @@ export type StrategyDefinition = {
     positions: StrategyPositionSeed[];
   };
 };
+
+const DEFAULT_VENUES: EvolgoVenue[] = ["binance", "okx"];
 
 export const DEFAULT_STRATEGY_ID = "evolgo-consensus";
 
@@ -214,6 +222,8 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     blurb:
       "Multi-signal consensus across top-10 Binance Futures · mean reversion + microstructure filters",
     status: "live",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     defaultLeverage: 3,
     telemetry: {
       basePnl: 9.4,
@@ -227,6 +237,8 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     name: "EvolgoPumpHunter",
     blurb: "Impulse / breakout hunter · short-lived momentum bursts",
     status: "coming_soon",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     defaultLeverage: 7,
     telemetry: {
       basePnl: 14.8,
@@ -241,6 +253,8 @@ export const STRATEGY_CATALOG: readonly StrategyDefinition[] = [
     blurb:
       "Adaptive multi-timeframe intelligence · Supertrend + EMA regime + EvolgoAI orchestration",
     status: "beta",
+    supportedVenues: DEFAULT_VENUES,
+    preferredVenue: "binance",
     defaultLeverage: 5,
     telemetry: {
       basePnl: 10.4,

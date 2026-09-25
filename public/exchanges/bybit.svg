@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Bybit">
+  <!-- Simplified mark inspired by Bybit brand (Wikimedia: Bybit_Logo.svg). -->
+  <rect width="64" height="64" rx="12" fill="#0B0E11"/>
+  <path
+    fill="#F7A600"
+    d="M18 16h16.2c7.4 0 12.3 4.2 12.3 10.6 0 4.4-2.4 7.8-6.3 9.3L46 48H36.4L31 36.2H26.2V48H18V16zm8.2 13.6h6.6c3.1 0 5-1.6 5-4.2s-1.9-4.1-5-4.1h-6.6v8.3z"
+  />
+</svg>
