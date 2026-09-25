@@ -530,7 +530,7 @@ export function ExchangeApiModal({
               {isOkx && (
                 <label className="block">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
-                    Passphrase <span className="text-amber-200">(required)</span>
+                    Passphrase
                   </span>
                   <div className="mt-1.5 flex gap-2">
                     <input
@@ -544,7 +544,7 @@ export function ExchangeApiModal({
                         if (phase === "error") setPhase("idle");
                         setError(null);
                       }}
-                      placeholder="OKX API passphrase"
+                      placeholder="••••••••••••"
                       className="min-w-0 flex-1 rounded-xl border border-white/12 bg-void/70 px-3 py-2.5 font-mono text-sm text-foreground outline-none focus:border-cyan/40 disabled:opacity-60"
                     />
                     <button
@@ -556,6 +556,10 @@ export function ExchangeApiModal({
                       {showPassphrase ? "Hide" : "Show"}
                     </button>
                   </div>
+                  <p className="mt-1.5 font-mono text-[10px] leading-4 text-muted">
+                    Required by OKX when the API key was created. Encrypted at
+                    rest — never shown again after save.
+                  </p>
                 </label>
               )}
 

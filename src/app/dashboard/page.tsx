@@ -1,5 +1,5 @@
 import { PortfolioOverview } from "@/components/dashboard/PortfolioOverview";
-import { AiPerformance } from "@/components/dashboard/AiPerformance";
+import { AgentFleet } from "@/components/dashboard/AgentFleet";
 
 export default function DashboardOverviewPage() {
   return (
@@ -12,13 +12,13 @@ export default function DashboardOverviewPage() {
           Operator dashboard
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-          Live $NOVA holdings paired with EVOLGO AI backtest intelligence — the
-          command surface for MultiversX operators.
+          Live $NOVA holdings paired with the Evolgo agent fleet — the command
+          surface for MultiversX operators.
         </p>
       </header>
 
       <PortfolioOverview />
-      <AiPerformance />
+      <AgentFleet />
     </div>
   );
 }

@@ -1,141 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useGetAccount } from "@multiversx/sdk-dapp/out/react/account/useGetAccount";
-import { useGetIsLoggedIn } from "@multiversx/sdk-dapp/out/react/account/useGetIsLoggedIn";
 import { AgentCard } from "@/components/agents/AgentCard";
-import { AgentPaywallModal } from "@/components/agents/AgentPaywallModal";
-import { AgentTerminalModal } from "@/components/agents/AgentTerminalModal";
+import { AgentLaunchModals } from "@/components/agents/AgentLaunchModals";
+import { useAgentLaunchFlow } from "@/components/agents/useAgentLaunchFlow";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { AGENT_CATALOG, isAgentLaunchable, type AgentDefinition } from "@/config/agents";
-import { useWalletUI } from "@/providers/WalletUIProvider";
-
-type SubMap = Record<string, { active: boolean; expiresAt?: string }>;
+import { AGENT_CATALOG, getAgentById } from "@/config/agents";
 
 export function AgentsMarketplace() {
-  const isLoggedIn = useGetIsLoggedIn();
-  const account = useGetAccount();
-  const { openConnect } = useWalletUI();
+  const launch = useAgentLaunchFlow();
 
-  const [subs, setSubs] = useState<SubMap>({});
-  const [loadingSubs, setLoadingSubs] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<AgentDefinition | null>(null);
-  const [paywallOpen, setPaywallOpen] = useState(false);
-  const [terminalOpen, setTerminalOpen] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
-  /** Accordion: only one panel open; default = first agent. */
+  /** Accordion: only one panel open; default = first agent or hash target. */
   const [expandedId, setExpandedId] = useState<string>(
     AGENT_CATALOG[0]?.id ?? "",
   );
 
-  const refreshSubscriptions = useCallback(async (address: string) => {
-    setLoadingSubs(true);
-    try {
-      const res = await fetch(
-        `/api/agents/subscription?address=${encodeURIComponent(address)}`,
-        { cache: "no-store" },
-      );
-      const json = (await res.json()) as {
-        ok?: boolean;
-        activeAgentIds?: string[];
-        subscriptions?: Array<{ agentId: string; expiresAt: string }>;
-        error?: string;
-      };
-      if (!res.ok) {
-        setBanner(json.error ?? "Could not load subscriptions");
-        return;
-      }
-      const next: SubMap = {};
-      for (const id of json.activeAgentIds ?? []) {
-        next[id] = { active: true };
-      }
-      for (const s of json.subscriptions ?? []) {
-        next[s.agentId] = { active: true, expiresAt: s.expiresAt };
-      }
-      setSubs(next);
-      setBanner(null);
-    } catch {
-      setBanner("Subscription check failed — retry shortly");
-    } finally {
-      setLoadingSubs(false);
-    }
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.location.hash.replace(/^#/, "").trim();
+    if (!raw) return;
+    const agent = getAgentById(raw);
+    if (agent) setExpandedId(agent.id);
   }, []);
 
-  useEffect(() => {
-    if (isLoggedIn && account.address) {
-      void refreshSubscriptions(account.address);
-    } else {
-      setSubs({});
-    }
-  }, [isLoggedIn, account.address, refreshSubscriptions]);
-
-  const openTerminal = (agent: AgentDefinition, expiresAt?: string) => {
-    setSelected(agent);
-    if (expiresAt) {
-      setSubs((prev) => ({
-        ...prev,
-        [agent.id]: { active: true, expiresAt },
-      }));
-    }
-    setTerminalOpen(true);
-  };
-
-  const handleLaunch = async (agent: AgentDefinition) => {
-    if (!isAgentLaunchable(agent)) {
-      setBanner(`${agent.name} is not launchable yet — ${agent.availability.replace("_", " ")}`);
-      return;
-    }
-
-    // Production-ready free agent — skip paywall / subscription entirely.
-    if (agent.freeAccess) {
-      openTerminal(agent);
-      return;
-    }
-
-    if (!isLoggedIn || !account.address) {
-      openConnect();
-      return;
-    }
-
-    setBusyId(agent.id);
-    setBanner(null);
-    try {
-      const res = await fetch(
-        `/api/agents/subscription?address=${encodeURIComponent(account.address)}&agentId=${encodeURIComponent(agent.id)}`,
-        { cache: "no-store" },
-      );
-      const json = (await res.json()) as {
-        ok?: boolean;
-        active?: boolean;
-        subscription?: { expiresAt?: string };
-        error?: string;
-      };
-
-      if (!res.ok) {
-        setBanner(json.error ?? "Subscription service unavailable");
-        setSelected(agent);
-        setPaywallOpen(true);
-        return;
-      }
-
-      if (json.active) {
-        openTerminal(agent, json.subscription?.expiresAt);
-        return;
-      }
-
-      setSelected(agent);
-      setPaywallOpen(true);
-    } catch {
-      setBanner("Could not verify access — try again");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleToggle = (agentId: string) => {
+  const handleToggle = useCallback((agentId: string) => {
     setExpandedId((current) => (current === agentId ? "" : agentId));
-  };
+  }, []);
 
   return (
     <div className="mx-auto w-full space-y-5 sm:space-y-6">
@@ -154,17 +44,17 @@ export function AgentsMarketplace() {
           </p>
         </div>
         <p className="shrink-0 font-mono text-[10px] text-muted">
-          {loadingSubs
+          {launch.loadingSubs
             ? "Syncing…"
-            : isLoggedIn
-              ? `${Object.values(subs).filter((s) => s.active).length} paid clearance(s)`
+            : launch.isLoggedIn
+              ? `${Object.values(launch.subs).filter((s) => s.active).length} paid clearance(s)`
               : "Evolgo Consensus AI · free to launch"}
         </p>
       </div>
 
-      {banner && (
+      {launch.banner && (
         <GlassCard className="!py-3">
-          <p className="font-mono text-[11px] text-magenta">{banner}</p>
+          <p className="font-mono text-[11px] text-magenta">{launch.banner}</p>
         </GlassCard>
       )}
 
@@ -175,48 +65,24 @@ export function AgentsMarketplace() {
             agent={agent}
             expanded={expandedId === agent.id}
             onToggle={() => handleToggle(agent.id)}
-            subscribed={Boolean(agent.freeAccess || subs[agent.id]?.active)}
-            busy={busyId === agent.id}
+            subscribed={launch.isSubscribed(agent)}
+            busy={launch.busyId === agent.id}
             delay={0.04 * i}
-            onLaunch={(a) => void handleLaunch(a)}
+            onLaunch={(a) => void launch.handleLaunch(a)}
           />
         ))}
       </div>
 
-      <AgentPaywallModal
-        open={paywallOpen}
-        agent={selected}
-        walletAddress={account.address ?? null}
-        onClose={() => {
-          setPaywallOpen(false);
-        }}
-        onConnect={() => {
-          setPaywallOpen(false);
-          openConnect();
-        }}
-        onSubscribed={(expiresAt) => {
-          if (!selected) return;
-          setSubs((prev) => ({
-            ...prev,
-            [selected.id]: { active: true, expiresAt },
-          }));
-          setPaywallOpen(false);
-          setTerminalOpen(true);
-          if (account.address) void refreshSubscriptions(account.address);
-        }}
-      />
-
-      <AgentTerminalModal
-        open={terminalOpen}
-        agent={selected}
-        expiresAt={
-          selected?.freeAccess
-            ? null
-            : selected
-              ? subs[selected.id]?.expiresAt
-              : null
-        }
-        onClose={() => setTerminalOpen(false)}
+      <AgentLaunchModals
+        selected={launch.selected}
+        walletAddress={launch.walletAddress}
+        paywallOpen={launch.paywallOpen}
+        terminalOpen={launch.terminalOpen}
+        terminalExpiresAt={launch.terminalExpiresAt}
+        onClosePaywall={launch.closePaywall}
+        onPaywallConnect={launch.onPaywallConnect}
+        onSubscribed={launch.onSubscribed}
+        onCloseTerminal={launch.closeTerminal}
       />
     </div>
   );

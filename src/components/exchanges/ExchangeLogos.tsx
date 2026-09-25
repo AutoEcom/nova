@@ -35,7 +35,7 @@ export function OkxMark({ className = "", size = 32 }: MarkProps) {
   );
 }
 
-/** Official Bybit logo mark (brand-inspired; full SVG on Wikimedia Commons). */
+/** Official Bybit logo (Wikimedia Commons: Bybit_Logo.svg). */
 export function BybitMark({ className = "", size = 32 }: MarkProps) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -44,7 +44,7 @@ export function BybitMark({ className = "", size = 32 }: MarkProps) {
       alt=""
       width={size}
       height={size}
-      className={`shrink-0 rounded-md object-contain ${className}`}
+      className={`shrink-0 object-contain ${className}`}
       aria-hidden
     />
   );
