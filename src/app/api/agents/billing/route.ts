@@ -4,6 +4,10 @@ import {
   listBillingSubscriptionsForWallet,
   setSubscriptionAutoRenew,
 } from "@/lib/agents/registry";
+import {
+  isSupabaseConfigured,
+  mapSupabaseError,
+} from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -18,6 +22,17 @@ function daysRemaining(expiresAt: string): number {
  */
 export async function GET(request: Request) {
   try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Subscription database not configured (missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
+        },
+        { status: 503 },
+      );
+    }
+
     const address = new URL(request.url).searchParams.get("address")?.trim() ?? "";
     if (!/^erd1[a-z0-9]{58}$/i.test(address)) {
       return NextResponse.json(
@@ -72,7 +87,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : "Billing lookup failed",
+        error: mapSupabaseError(err, "Billing lookup failed"),
       },
       { status: 500 },
     );
@@ -113,7 +128,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : "Failed to update billing",
+        error: mapSupabaseError(err, "Failed to update billing"),
       },
       { status: 500 },
     );

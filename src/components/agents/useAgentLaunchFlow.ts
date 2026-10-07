@@ -8,6 +8,16 @@ import { useWalletUI } from "@/providers/WalletUIProvider";
 
 export type AgentSubMap = Record<string, { active: boolean; expiresAt?: string }>;
 
+/** Operator-facing copy — never surface raw TypeError / fetch failed. */
+function friendlySubError(raw: string | undefined, fallback: string): string {
+  const msg = (raw ?? "").trim();
+  if (!msg) return fallback;
+  if (/TypeError:\s*fetch failed|fetch failed|Failed to fetch/i.test(msg)) {
+    return "Subscription service unreachable — check server Supabase config and retry";
+  }
+  return msg.replace(/^TypeError:\s*/i, "");
+}
+
 /**
  * Shared agent launch path (marketplace + Overview Command Center).
  * Free / subscribed → terminal; paid without sub → paywall → terminal.
@@ -39,7 +49,9 @@ export function useAgentLaunchFlow() {
         error?: string;
       };
       if (!res.ok) {
-        setBanner(json.error ?? "Could not load subscriptions");
+        setBanner(
+          friendlySubError(json.error, "Could not load subscriptions"),
+        );
         return;
       }
       const next: AgentSubMap = {};
@@ -51,8 +63,13 @@ export function useAgentLaunchFlow() {
       }
       setSubs(next);
       setBanner(null);
-    } catch {
-      setBanner("Subscription check failed — retry shortly");
+    } catch (err) {
+      setBanner(
+        friendlySubError(
+          err instanceof Error ? err.message : undefined,
+          "Subscription check failed — retry shortly",
+        ),
+      );
     } finally {
       setLoadingSubs(false);
     }
@@ -114,7 +131,9 @@ export function useAgentLaunchFlow() {
         };
 
         if (!res.ok) {
-          setBanner(json.error ?? "Subscription service unavailable");
+          setBanner(
+            friendlySubError(json.error, "Subscription service unavailable"),
+          );
           setSelected(agent);
           setPaywallOpen(true);
           return;
@@ -127,8 +146,13 @@ export function useAgentLaunchFlow() {
 
         setSelected(agent);
         setPaywallOpen(true);
-      } catch {
-        setBanner("Could not verify access — try again");
+      } catch (err) {
+        setBanner(
+          friendlySubError(
+            err instanceof Error ? err.message : undefined,
+            "Could not verify access — try again",
+          ),
+        );
       } finally {
         setBusyId(null);
       }
@@ -152,13 +176,25 @@ export function useAgentLaunchFlow() {
   const onSubscribed = useCallback(
     (expiresAt: string) => {
       if (!selected) return;
+      const agentId = selected.id;
+      // Optimistic unlock — keep local clearance even if refresh fails transiently.
       setSubs((prev) => ({
         ...prev,
-        [selected.id]: { active: true, expiresAt },
+        [agentId]: { active: true, expiresAt },
       }));
+      setBanner(null);
       setPaywallOpen(false);
       setTerminalOpen(true);
-      if (account.address) void refreshSubscriptions(account.address);
+      if (account.address) {
+        void refreshSubscriptions(account.address).then(() => {
+          // If refresh wiped the agent due to empty/failed list, restore optimistic.
+          setSubs((prev) =>
+            prev[agentId]?.active
+              ? prev
+              : { ...prev, [agentId]: { active: true, expiresAt } },
+          );
+        });
+      }
     },
     [account.address, refreshSubscriptions, selected],
   );

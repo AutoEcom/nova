@@ -1,21 +1,36 @@
 import { NextResponse } from "next/server";
-import { getAgentById } from "@/config/agents";
+import { getAgentById, resolveAgentId } from "@/config/agents";
 import {
   getActiveAgentSubscription,
   listActiveSubscriptionsForWallet,
 } from "@/lib/agents/registry";
+import {
+  isSupabaseConfigured,
+  mapSupabaseError,
+} from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 /**
- * GET /api/agents/subscription?address=erd1...&agentId=nova-regressors
+ * GET /api/agents/subscription?address=erd1...&agentId=evolgo-adaptive-mtf
  * Without agentId → list all active subscriptions for the wallet.
  */
 export async function GET(request: Request) {
   try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Subscription database not configured (missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
+        },
+        { status: 503 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address")?.trim() ?? "";
-    const agentId = searchParams.get("agentId")?.trim() ?? "";
+    const agentIdRaw = searchParams.get("agentId")?.trim() ?? "";
 
     if (!/^erd1[a-z0-9]{58}$/i.test(address)) {
       return NextResponse.json(
@@ -24,7 +39,8 @@ export async function GET(request: Request) {
       );
     }
 
-    if (agentId) {
+    if (agentIdRaw) {
+      const agentId = resolveAgentId(agentIdRaw);
       if (!getAgentById(agentId)) {
         return NextResponse.json(
           { ok: false, error: "Unknown agent" },
@@ -53,7 +69,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : "Subscription lookup failed",
+        error: mapSupabaseError(err, "Subscription lookup failed"),
       },
       { status: 500 },
     );

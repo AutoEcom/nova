@@ -190,8 +190,14 @@ const AGENT_ID_ALIASES: Record<string, string> = {
   "pulse-sentinel": "evolgo-pump-hunter",
 };
 
+/** Resolve legacy marketplace ids to the canonical catalog id. */
+export function resolveAgentId(id: string): string {
+  const trimmed = id.trim();
+  return AGENT_ID_ALIASES[trimmed] ?? trimmed;
+}
+
 export function getAgentById(id: string): AgentDefinition | undefined {
-  const resolved = AGENT_ID_ALIASES[id] ?? id;
+  const resolved = resolveAgentId(id);
   return AGENT_CATALOG.find((a) => a.id === resolved);
 }
 

@@ -1,4 +1,8 @@
-import { createServiceSupabaseClient } from "@/lib/supabase/server";
+import { resolveAgentId } from "@/config/agents";
+import {
+  createServiceSupabaseClient,
+  mapSupabaseError,
+} from "@/lib/supabase/server";
 
 export type AgentSubscriptionRecord = {
   id: string;
@@ -32,7 +36,17 @@ const SUB_SELECT =
   "id, wallet_address, agent_id, status, payment_asset, amount_paid, payment_tx_hash, starts_at, expires_at, created_at, auto_renew";
 
 function db() {
-  return createServiceSupabaseClient();
+  try {
+    return createServiceSupabaseClient();
+  } catch (err) {
+    throw new Error(mapSupabaseError(err, "Subscription database unavailable"));
+  }
+}
+
+function throwDb(err: { message?: string } | null | undefined, fallback: string): never {
+  throw new Error(
+    mapSupabaseError(err?.message ?? fallback, fallback),
+  );
 }
 
 function isBech32Address(address: string): boolean {
@@ -74,20 +88,21 @@ export async function getActiveAgentSubscription(
   agentId: string,
 ): Promise<AgentSubscriptionRecord | null> {
   const wallet = walletRaw.trim().toLowerCase();
-  if (!isBech32Address(wallet) || !agentId.trim()) return null;
+  const agent = resolveAgentId(agentId);
+  if (!isBech32Address(wallet) || !agent) return null;
 
   const { data, error } = await db()
     .from("agent_subscriptions")
     .select(SUB_SELECT)
     .eq("wallet_address", wallet)
-    .eq("agent_id", agentId.trim())
+    .eq("agent_id", agent)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
     .order("expires_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throwDb(error, "Subscription lookup failed");
   return data ? rowToRecord(data as SubRow) : null;
 }
 
@@ -104,7 +119,7 @@ export async function listActiveSubscriptionsForWallet(
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString());
 
-  if (error) throw new Error(error.message);
+  if (error) throwDb(error, "Subscription list failed");
   return ((data ?? []) as SubRow[]).map(rowToRecord);
 }
 
@@ -122,7 +137,7 @@ export async function listBillingSubscriptionsForWallet(
     .order("created_at", { ascending: false })
     .limit(40);
 
-  if (error) throw new Error(error.message);
+  if (error) throwDb(error, "Billing list failed");
   return ((data ?? []) as SubRow[]).map(rowToRecord);
 }
 
@@ -145,7 +160,7 @@ export async function setSubscriptionAutoRenew(params: {
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? "Failed to update auto-renew");
+    throwDb(error, "Failed to update auto-renew");
   }
   return rowToRecord(data as SubRow);
 }
@@ -160,7 +175,7 @@ export async function findSubscriptionByPaymentTx(
     .select(SUB_SELECT)
     .eq("payment_tx_hash", key)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throwDb(error, "Payment lookup failed");
   return data ? rowToRecord(data as SubRow) : null;
 }
 
@@ -173,6 +188,7 @@ export async function activateAgentSubscription(params: {
   durationDays?: number;
 }): Promise<AgentSubscriptionRecord> {
   const wallet = params.walletAddress.trim().toLowerCase();
+  const agentId = resolveAgentId(params.agentId);
   if (!isBech32Address(wallet)) {
     throw new Error("Invalid MultiversX address");
   }
@@ -185,18 +201,19 @@ export async function activateAgentSubscription(params: {
   const expires = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
   // Expire any previous active row for this wallet+agent.
-  await db()
+  const { error: expireError } = await db()
     .from("agent_subscriptions")
     .update({ status: "expired" })
     .eq("wallet_address", wallet)
-    .eq("agent_id", params.agentId)
+    .eq("agent_id", agentId)
     .eq("status", "active");
+  if (expireError) throwDb(expireError, "Failed to rotate prior subscription");
 
   const { data, error } = await db()
     .from("agent_subscriptions")
     .insert({
       wallet_address: wallet,
-      agent_id: params.agentId,
+      agent_id: agentId,
       status: "active",
       payment_asset: params.paymentAsset,
       amount_paid: params.amountPaid,
@@ -209,7 +226,12 @@ export async function activateAgentSubscription(params: {
     .single();
 
   if (error || !data) {
-    throw new Error(error?.message ?? "Failed to activate subscription");
+    // Idempotent race: another request inserted the same tx hash.
+    if (error && /duplicate|unique/i.test(error.message)) {
+      const raced = await findSubscriptionByPaymentTx(params.paymentTxHash);
+      if (raced) return raced;
+    }
+    throwDb(error, "Failed to activate subscription");
   }
   return rowToRecord(data as SubRow);
 }

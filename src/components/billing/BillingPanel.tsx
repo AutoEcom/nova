@@ -57,11 +57,23 @@ export function BillingPanel() {
         active?: ActiveRow[];
         history?: HistoryRow[];
       };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load billing");
+      if (!res.ok) {
+        const raw = json.error ?? "Failed to load billing";
+        throw new Error(
+          /TypeError:\s*fetch failed|fetch failed|Failed to fetch/i.test(raw)
+            ? "Subscription database unreachable — check server Supabase config"
+            : raw.replace(/^TypeError:\s*/i, ""),
+        );
+      }
       setActive(json.active ?? []);
       setHistory(json.history ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Billing load failed");
+      const raw = err instanceof Error ? err.message : "Billing load failed";
+      setError(
+        /TypeError:\s*fetch failed|fetch failed|Failed to fetch/i.test(raw)
+          ? "Subscription database unreachable — check server Supabase config"
+          : raw.replace(/^TypeError:\s*/i, ""),
+      );
     } finally {
       setLoading(false);
     }

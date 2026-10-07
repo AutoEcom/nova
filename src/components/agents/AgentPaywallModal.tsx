@@ -93,44 +93,62 @@ export function AgentPaywallModal({
       }
 
       setStatus("activating");
-      let res = await fetch("/api/agents/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: latest.address,
-          agentId: agent.id,
-          asset,
-          paymentTxHash,
-        }),
-      });
-      let json = (await res.json()) as {
+
+      const payload = {
+        address: latest.address,
+        agentId: agent.id,
+        asset,
+        paymentTxHash,
+      };
+
+      let json: {
         ok?: boolean;
         error?: string;
         retry?: boolean;
-        subscription?: { expiresAt?: string };
-      };
+        subscription?: { expiresAt?: string; agentId?: string };
+      } = {};
+      let res: Response | null = null;
+      let lastError = "Failed to activate subscription";
 
-      if (!res.ok && json.retry) {
-        await new Promise((r) => setTimeout(r, 4000));
-        res = await fetch("/api/agents/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: latest.address,
-            agentId: agent.id,
-            asset,
-            paymentTxHash,
-          }),
-        });
-        json = (await res.json()) as typeof json;
+      // Indexer + DB can lag; retry with backoff before failing the unlock.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, 2500 + attempt * 500));
+        }
+        try {
+          res = await fetch("/api/agents/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          json = (await res.json()) as typeof json;
+        } catch (err) {
+          lastError =
+            err instanceof Error ? err.message : "Activation network error";
+          continue;
+        }
+
+        if (res.ok && json.ok && json.subscription?.expiresAt) {
+          setStatus("success");
+          onSubscribed(json.subscription.expiresAt);
+          return;
+        }
+
+        lastError = json.error ?? lastError;
+        const retryable =
+          Boolean(json.retry) ||
+          /not found yet|not confirmed|unreachable|retry/i.test(lastError);
+        if (!retryable) break;
       }
 
-      if (!res.ok) {
-        throw new Error(json.error ?? "Failed to activate subscription");
-      }
-
-      setStatus("success");
-      onSubscribed(json.subscription?.expiresAt ?? new Date().toISOString());
+      const friendly = /TypeError:\s*fetch failed|fetch failed|Failed to fetch/i.test(
+        lastError,
+      )
+        ? "Could not activate clearance — subscription database unreachable. Payment is on-chain; retry Activate or contact support with your tx hash."
+        : lastError.replace(/^TypeError:\s*/i, "");
+      throw new Error(
+        `${friendly}${paymentTxHash ? ` · tx ${paymentTxHash.slice(0, 10)}…` : ""}`,
+      );
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Payment failed");
